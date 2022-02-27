@@ -6,3 +6,18 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-trait = "0.1.52"
+futures = "0.3.21"
+tokio = { version = "1.17.0", features = ["sync", "rt", "macros"] }
+tokio-tungstenite = "0.17.1"
+tracing = "0.1.31"
+url = "2.2.2"
+
+[features]
+client = []
+server = []
+
+[dev-dependencies]
+thiserror = "1.0.30"
+tokio = { version = "1.17.0", features = ["full"] }
+tracing-subscriber = "0.3.9"
