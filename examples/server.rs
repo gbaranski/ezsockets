@@ -3,12 +3,16 @@ use ezsockets::BoxError;
 use ezsockets::ServerHandle;
 use ezsockets::SessionHandle;
 use std::collections::HashMap;
+use std::io::BufRead;
 
 type SessionID = u8;
 
 #[derive(Debug)]
 enum Message {
-    Broadcast { from: SessionID, text: String },
+    Broadcast {
+        text: String,
+        exceptions: Vec<SessionID>,
+    },
 }
 
 struct Server {
@@ -38,8 +42,11 @@ impl ezsockets::Server<Session> for Server {
 
     async fn message(&mut self, message: Self::Message) {
         match message {
-            Message::Broadcast { from, text } => {
-                let sessions = self.sessions.iter().filter(|(id, _)| **id != from);
+            Message::Broadcast { exceptions, text } => {
+                let sessions = self
+                    .sessions
+                    .iter()
+                    .filter(|(id, _)| !exceptions.contains(id));
                 for (id, handle) in sessions {
                     println!("broadcasting {text} to {id}");
                     handle.text(text.clone()).await;
@@ -59,7 +66,7 @@ impl ezsockets::Session for Session {
     async fn text(&mut self, text: String) -> Result<Option<ezsockets::Message>, BoxError> {
         self.server
             .call(Message::Broadcast {
-                from: self.id,
+                exceptions: vec![self.id],
                 text,
             })
             .await;
@@ -86,7 +93,7 @@ enum Error {}
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let (_, future) = ezsockets::run(
+    let (handle, _) = ezsockets::run(
         |handle| Server {
             sessions: HashMap::new(),
             handle,
@@ -95,5 +102,15 @@ async fn main() {
         "127.0.0.1:8080",
     )
     .await;
-    future.await.unwrap();
+    let stdin = std::io::stdin();
+    let lines = stdin.lock().lines();
+    for line in lines {
+        let line = line.unwrap();
+        handle
+            .call(Message::Broadcast {
+                text: line,
+                exceptions: vec![],
+            })
+            .await;
+    }
 }
