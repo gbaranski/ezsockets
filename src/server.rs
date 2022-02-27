@@ -15,7 +15,6 @@ use tokio_tungstenite::tungstenite;
 
 type WebSocketStream = tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>;
 
-
 #[async_trait]
 pub trait Server<S: Session>: Send {
     type Message;

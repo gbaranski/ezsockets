@@ -2,8 +2,8 @@ mod client;
 mod server;
 mod websocket;
 
-pub use websocket::Message;
 pub use websocket::CloseCode;
+pub use websocket::Message;
 
 pub use client::connect;
 pub use client::Client;

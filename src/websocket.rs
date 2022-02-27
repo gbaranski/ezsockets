@@ -22,7 +22,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-
 #[derive(Debug)]
 pub enum CloseCode {
     /// Indicates a normal closure, meaning that the purpose for
@@ -93,7 +92,6 @@ pub enum CloseCode {
     Library(u16),
     #[doc(hidden)]
     Bad(u16),
-
 }
 
 use tokio_tungstenite::tungstenite;
@@ -148,7 +146,6 @@ impl From<TungsteniteCloseCode> for CloseCode {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub enum Message {
