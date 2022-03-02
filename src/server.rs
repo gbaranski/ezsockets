@@ -1,29 +1,88 @@
-use std::marker::PhantomData;
-use std::net::SocketAddr;
-
 use crate::BoxError;
 use crate::CloseCode;
 use crate::Message;
 use async_trait::async_trait;
 use futures::Future;
 use futures::SinkExt;
+use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
+use tracing::Instrument;
+use tracing::Span;
 
 type WebSocketStream = tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>;
 
+struct ServerActor<E: Server> {
+    receiver: mpsc::UnboundedReceiver<E::Message>,
+    extension: E,
+
+    address: SocketAddr,
+}
+
+impl<E: Server> ServerActor<E>
+where
+    E: Send + 'static,
+{
+    async fn run(mut self) -> Result<(), BoxError> {
+        tracing::info!("starting server on {}", self.address);
+        let listener = tokio::net::TcpListener::bind(self.address).await?;
+        loop {
+            tokio::select! {
+                Ok((stream, address)) = listener.accept() => {
+                    self.accept_connection(stream, address).await?;
+                }
+                Some(message) = self.receiver.recv() => {
+                    self.extension.message(message).await;
+                }
+                else => break,
+            }
+        }
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self, stream))]
+    async fn accept_connection(
+        &mut self,
+        stream: TcpStream,
+        address: SocketAddr,
+    ) -> Result<(), BoxError> {
+        let websocket_stream = tokio_tungstenite::accept_async(stream).await?;
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let handle = SessionHandle { sender };
+        let session = self.extension.connected(handle, address).await?;
+        let actor = SessionActor {
+            inner: session,
+            receiver,
+            stream: websocket_stream,
+            heartbeat: Instant::now(),
+        };
+        tokio::spawn(
+            async move {
+                let result = actor.run().await;
+                match result {
+                    Ok(_) => tracing::info!("connection closed"),
+                    Err(err) => tracing::warn!("connection error: {err}"),
+                }
+            }
+            .instrument(Span::current()),
+        );
+        Ok(())
+    }
+}
+
 #[async_trait]
-pub trait Server<S: Session>: Send {
+pub trait Server: Send {
+    type Session: Session;
     type Message;
 
     async fn connected(
         &mut self,
         handle: SessionHandle,
         address: SocketAddr,
-    ) -> Result<S, BoxError>;
+    ) -> Result<Self::Session, BoxError>;
 
     async fn message(&mut self, message: Self::Message);
 }
@@ -47,71 +106,34 @@ impl<M> std::clone::Clone for ServerHandle<M> {
     }
 }
 
-pub async fn run<M: Send + 'static, S: Session + 'static, SRV: Server<S, Message = M> + 'static>(
-    create: impl FnOnce(ServerHandle<M>) -> SRV,
+pub async fn run<E>(
+    create: impl FnOnce(ServerHandle<E::Message>) -> E,
     address: impl ToSocketAddrs,
-) -> (ServerHandle<M>, impl Future<Output = Result<(), BoxError>>) {
+) -> (
+    ServerHandle<E::Message>,
+    impl Future<Output = Result<(), BoxError>>,
+)
+where
+    E: Server + 'static,
+    E::Message: Send + 'static,
+{
     let (sender, receiver) = mpsc::unbounded_channel();
     let handle = ServerHandle { sender };
-    let server = create(handle.clone());
+    let extension = create(handle.clone());
     let address = address.to_socket_addrs().unwrap().next().unwrap();
-    let future = tokio::spawn(async move {
-        let actor = ServerActor {
-            server,
-            address,
-            phantom_session: Default::default(),
-            receiver,
-        };
-        actor.run().await?;
-        Ok::<_, BoxError>(())
+    let future = tokio::spawn({
+        async move {
+            let actor = ServerActor {
+                receiver,
+                address,
+                extension,
+            };
+            actor.run().await?;
+            Ok::<_, BoxError>(())
+        }
     });
     let future = async move { future.await.unwrap() };
     (handle, future)
-}
-
-struct ServerActor<S: Session, SRV: Server<S>, M> {
-    server: SRV,
-    receiver: mpsc::UnboundedReceiver<M>,
-    address: SocketAddr,
-    phantom_session: PhantomData<S>,
-}
-
-impl<M, S: Session + 'static, SRV: Server<S, Message = M>> ServerActor<S, SRV, M> {
-    async fn run(mut self) -> Result<(), BoxError> {
-        tracing::info!("starting server on {}", self.address);
-        let listener = tokio::net::TcpListener::bind(self.address).await?;
-        loop {
-            tokio::select! {
-                Ok((stream, address)) = listener.accept() => {
-                    self.accept_connection(stream, address).await?;
-                }
-                Some(message) = self.receiver.recv() => {
-                    self.server.message(message).await;
-                }
-                else => break,
-            }
-        }
-        Ok(())
-    }
-
-    async fn accept_connection(
-        &mut self,
-        stream: TcpStream,
-        address: SocketAddr,
-    ) -> Result<(), BoxError> {
-        let websocket_stream = tokio_tungstenite::accept_async(stream).await?;
-        let (sender, receiver) = mpsc::unbounded_channel();
-        let handle = SessionHandle { sender };
-        let session = self.server.connected(handle, address).await?;
-        let actor = SessionActor {
-            inner: session,
-            receiver,
-            stream: websocket_stream,
-            heartbeat: Instant::now(),
-        };
-        tokio::spawn(async move { actor.run().await.unwrap() });
-        Ok(())
-    }
 }
 
 #[async_trait]

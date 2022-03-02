@@ -4,10 +4,27 @@ use crate::Message;
 use async_trait::async_trait;
 use futures::SinkExt;
 use std::future::Future;
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 use url::Url;
+
+#[derive(Debug)]
+pub struct ClientConfig {
+    pub url: Url,
+    pub reconnect_interval: Option<Duration>,
+}
+
+impl ClientConfig {
+    pub fn new(url: Url) -> Self {
+        Self {
+            url,
+            reconnect_interval: Some(Duration::new(10, 0)),
+        }
+    }
+
+}
 
 type WebSocketStream =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
@@ -40,12 +57,12 @@ impl ClientHandle {
 
 pub async fn connect<C: Client + 'static>(
     client: C,
-    url: Url,
+    config: ClientConfig,
 ) -> (ClientHandle, impl Future<Output = Result<(), BoxError>>) {
     let (sender, receiver) = mpsc::unbounded_channel();
     let handle = ClientHandle { sender };
     let future = tokio::spawn(async move {
-        let (stream, _) = tokio_tungstenite::connect_async(url).await?;
+        let (stream, _) = tokio_tungstenite::connect_async(config.url).await?;
         let actor = ClientActor {
             client,
             receiver,

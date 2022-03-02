@@ -22,14 +22,15 @@ struct Server {
 }
 
 #[async_trait]
-impl ezsockets::Server<Session> for Server {
+impl ezsockets::Server for Server {
     type Message = Message;
+    type Session = Session;
 
     async fn connected(
         &mut self,
         handle: SessionHandle,
         address: std::net::SocketAddr,
-    ) -> Result<Session, BoxError> {
+    ) -> Result<Self::Session, BoxError> {
         let id = self.next_id;
         self.next_id += 1;
         tracing::info!("connected from {} with id {}", address, id);

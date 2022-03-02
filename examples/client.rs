@@ -1,4 +1,5 @@
 use ezsockets::BoxError;
+use ezsockets::ClientConfig;
 use std::io::BufRead;
 use url::Url;
 
@@ -36,7 +37,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
     let client = Client {};
     let url = Url::parse("ws://localhost:8080").unwrap();
-    let (handle, future) = ezsockets::connect(client, url).await;
+    let (handle, future) = ezsockets::connect(client, ClientConfig::new(url)).await;
     tokio::spawn(async move {
         future.await.unwrap();
     });

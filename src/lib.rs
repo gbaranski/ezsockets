@@ -8,6 +8,7 @@ pub use websocket::Message;
 pub use client::connect;
 pub use client::Client;
 pub use client::ClientHandle;
+pub use client::ClientConfig;
 
 pub use server::run;
 pub use server::Server;
