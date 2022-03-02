@@ -3,3 +3,5 @@
 #### Handle Ping/Pong disconnections
 
 #### Should the `tracing` crate be used?
+
+#### Should the Server itself contain `HashMap<SessionID, SessionHandle>`?
