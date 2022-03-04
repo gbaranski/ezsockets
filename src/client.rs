@@ -23,7 +23,6 @@ impl ClientConfig {
             reconnect_interval: Some(Duration::new(10, 0)),
         }
     }
-
 }
 
 type WebSocketStream =
@@ -62,12 +61,14 @@ pub async fn connect<C: Client + 'static>(
     let (sender, receiver) = mpsc::unbounded_channel();
     let handle = ClientHandle { sender };
     let future = tokio::spawn(async move {
-        let (stream, _) = tokio_tungstenite::connect_async(config.url).await?;
+        let (stream, _) = tokio_tungstenite::connect_async(&config.url).await?;
+        tracing::info!("connected to {}", config.url);
         let actor = ClientActor {
             client,
             receiver,
             stream,
             heartbeat: Instant::now(),
+            config,
         };
         actor.run().await?;
         Ok::<_, BoxError>(())
@@ -80,13 +81,14 @@ struct ClientActor<C: Client> {
     client: C,
     receiver: mpsc::UnboundedReceiver<Message>,
     stream: WebSocketStream,
+    config: ClientConfig,
     heartbeat: Instant,
 }
 
 impl<C: Client> ClientActor<C> {
     async fn run(mut self) -> Result<(), BoxError> {
         use futures::StreamExt;
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+        let mut ping_interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
 
         loop {
             tokio::select! {
@@ -97,13 +99,25 @@ impl<C: Client> ClientActor<C> {
                     }
                 }
                 Some(message) = self.stream.next() => {
-                    let message = message?;
-                    let should_continue = self.handle_websocket_message(message).await?;
-                    if !should_continue {
-                        return Ok(())
-                    }
+                    let result = match message {
+                        Ok(message) => self.handle_websocket_message(message).await,
+                        Err(err) => Err(err.into()),
+                    };
+                    match result {
+                        Ok(true) => continue,
+                        Ok(false) => {
+                            // TODO: Should I reconnect here?
+                            return Ok(())
+                        },
+                        Err(err) => {
+                            tracing::error!("connection error: {}", err);
+                            if let Some(reconnect_interval) = self.config.reconnect_interval {
+                                self.reconnect(reconnect_interval).await;
+                            }
+                        }
+                    };
                 }
-                _ = interval.tick() => {
+                _ = ping_interval.tick() => {
                     self.stream.send(tungstenite::Message::Ping(Vec::new())).await?;
                 }
                 else => break,
@@ -111,6 +125,25 @@ impl<C: Client> ClientActor<C> {
         }
 
         Ok(())
+    }
+
+    async fn reconnect(&mut self, reconnect_interval: Duration) {
+        tracing::info!("reconnecting...");
+        loop {
+            let result = tokio_tungstenite::connect_async(&self.config.url).await;
+            match result {
+                Ok((stream, _)) => {
+                    tracing::error!("successfully reconnected");
+                    self.stream = stream;
+                    self.heartbeat = Instant::now();
+                    return;
+                }
+                Err(err) => {
+                    tracing::error!("reconnecting failed due to {}. will retry in {}s", err, reconnect_interval.as_secs());
+                    tokio::time::sleep(reconnect_interval).await;
+                }
+            };
+        }
     }
 
     async fn handle_message(&mut self, message: Message) -> Result<bool, BoxError> {
