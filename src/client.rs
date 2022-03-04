@@ -10,6 +10,8 @@ use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 use url::Url;
 
+const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
+
 #[derive(Debug)]
 pub struct ClientConfig {
     pub url: Url,
@@ -20,7 +22,7 @@ impl ClientConfig {
     pub fn new(url: Url) -> Self {
         Self {
             url,
-            reconnect_interval: Some(Duration::new(10, 0)),
+            reconnect_interval: Some(DEFAULT_RECONNECT_INTERVAL),
         }
     }
 }
