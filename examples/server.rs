@@ -16,7 +16,6 @@ enum Message {
 }
 
 struct Server {
-    next_id: u8,
     sessions: HashMap<u8, SessionHandle>,
     handle: ServerHandle<Message>,
 }
@@ -31,8 +30,7 @@ impl ezsockets::Server for Server {
         handle: SessionHandle,
         address: std::net::SocketAddr,
     ) -> Result<Self::Session, BoxError> {
-        let id = self.next_id;
-        self.next_id += 1;
+        let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         tracing::info!("connected from {} with id {}", address, id);
         self.sessions.insert(id, handle);
         Ok(Session {
@@ -98,7 +96,6 @@ async fn main() {
         |handle| Server {
             sessions: HashMap::new(),
             handle,
-            next_id: 0,
         },
         "127.0.0.1:8080",
     )

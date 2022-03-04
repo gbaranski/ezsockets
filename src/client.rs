@@ -130,8 +130,8 @@ impl<C: Client> ClientActor<C> {
     }
 
     async fn reconnect(&mut self, reconnect_interval: Duration) {
-        tracing::info!("reconnecting...");
-        loop {
+        for i in 1.. {
+            tracing::info!("reconnecting attempt no: {}...", i);
             let result = tokio_tungstenite::connect_async(&self.config.url).await;
             match result {
                 Ok((stream, _)) => {

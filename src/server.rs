@@ -43,7 +43,6 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, stream))]
     async fn accept_connection(
         &mut self,
         stream: TcpStream,
