@@ -22,7 +22,31 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub struct CloseFrame {
+    pub code: CloseCode,
+    pub reason: String,
+}
+
+impl<'t> From<tungstenite::protocol::CloseFrame<'t>> for CloseFrame {
+    fn from(frame: tungstenite::protocol::CloseFrame) -> Self {
+        Self {
+            code: frame.code.into(),
+            reason: frame.reason.into(),
+        }
+    }
+}
+
+impl<'t> From<CloseFrame> for tungstenite::protocol::CloseFrame<'t> {
+    fn from(frame: CloseFrame) -> Self {
+        Self {
+            code: frame.code.into(),
+            reason: frame.reason.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum CloseCode {
     /// Indicates a normal closure, meaning that the purpose for
     /// which the connection was established has been fulfilled.
@@ -151,7 +175,7 @@ impl From<TungsteniteCloseCode> for CloseCode {
 pub enum Message {
     Text(String),
     Binary(Vec<u8>),
-    Close(Option<(CloseCode, String)>),
+    Close(Option<CloseFrame>),
 }
 
 impl From<Message> for tungstenite::Message {
@@ -159,12 +183,7 @@ impl From<Message> for tungstenite::Message {
         match message {
             Message::Text(text) => tungstenite::Message::Text(text),
             Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
-            Message::Close(frame) => tungstenite::Message::Close(frame.map(|(code, reason)| {
-                tungstenite::protocol::CloseFrame {
-                    code: code.into(),
-                    reason: reason.into(),
-                }
-            })),
+            Message::Close(frame) => tungstenite::Message::Close(frame.map(CloseFrame::into)),
         }
     }
 }

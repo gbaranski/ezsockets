@@ -3,6 +3,7 @@ mod server;
 mod websocket;
 
 pub use websocket::CloseCode;
+pub use websocket::CloseFrame;
 pub use websocket::Message;
 
 pub use client::connect;

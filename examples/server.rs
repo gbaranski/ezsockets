@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use ezsockets::BoxError;
+use ezsockets::CloseFrame;
 use ezsockets::ServerHandle;
 use ezsockets::SessionHandle;
 use std::collections::HashMap;
@@ -13,11 +14,12 @@ enum Message {
         text: String,
         exceptions: Vec<SessionID>,
     },
+    Disconnected(SessionID),
 }
 
 struct Server {
     sessions: HashMap<u8, SessionHandle>,
-    handle: ServerHandle<Message>,
+    handle: ServerHandle<Server>,
 }
 
 #[async_trait]
@@ -28,10 +30,9 @@ impl ezsockets::Server for Server {
     async fn connected(
         &mut self,
         handle: SessionHandle,
-        address: std::net::SocketAddr,
+        _address: std::net::SocketAddr,
     ) -> Result<Self::Session, BoxError> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
-        tracing::info!("connected from {} with id {}", address, id);
         self.sessions.insert(id, handle);
         Ok(Session {
             id,
@@ -51,17 +52,25 @@ impl ezsockets::Server for Server {
                     handle.text(text.clone()).await;
                 }
             }
+            Message::Disconnected(id) => {
+                self.sessions.remove(&id);
+            }
         };
     }
 }
 
 struct Session {
     id: SessionID,
-    server: ServerHandle<Message>,
+    server: ServerHandle<Server>,
 }
 
 #[async_trait]
 impl ezsockets::Session for Session {
+    type ID = SessionID;
+
+    fn id(&self) -> &Self::ID {
+        &self.id
+    }
     async fn text(&mut self, text: String) -> Result<Option<ezsockets::Message>, BoxError> {
         self.server
             .call(Message::Broadcast {
@@ -76,12 +85,8 @@ impl ezsockets::Session for Session {
         unimplemented!()
     }
 
-    async fn closed(
-        &mut self,
-        code: Option<ezsockets::CloseCode>,
-        reason: Option<String>,
-    ) -> Result<(), BoxError> {
-        println!("connection closed. close code: {code:#?}. reason: {reason:#?}");
+    async fn disconnected(&mut self) -> Result<(), BoxError> {
+        self.server.call(Message::Disconnected(self.id)).await;
         Ok(())
     }
 }

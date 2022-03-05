@@ -1,5 +1,6 @@
 use crate::BoxError;
 use crate::CloseCode;
+use crate::CloseFrame;
 use crate::Message;
 use async_trait::async_trait;
 use futures::SinkExt;
@@ -153,10 +154,7 @@ impl<C: Client> ClientActor<C> {
             Message::Text(text) => tungstenite::Message::Text(text),
             Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
             Message::Close(frame) => {
-                let frame = frame.map(|(code, reason)| tungstenite::protocol::CloseFrame {
-                    code: code.into(),
-                    reason: reason.into(),
-                });
+                let frame = frame.map(CloseFrame::into).into();
                 self.stream.close(frame).await?;
                 return Ok(false);
             }
