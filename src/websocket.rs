@@ -22,6 +22,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+pub(crate) type WebSocketStream = tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>;
+
 #[derive(Debug, Clone)]
 pub struct CloseFrame {
     pub code: CloseCode,

@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use ezsockets::BoxError;
-use ezsockets::CloseFrame;
 use ezsockets::ServerHandle;
 use ezsockets::SessionHandle;
 use std::collections::HashMap;
