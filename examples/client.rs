@@ -1,14 +1,10 @@
+use async_trait::async_trait;
 use ezsockets::BoxError;
 use ezsockets::ClientConfig;
 use std::io::BufRead;
 use url::Url;
 
 struct Client {}
-
-use async_trait::async_trait;
-
-#[derive(Debug, thiserror::Error)]
-enum Error {}
 
 #[async_trait]
 impl ezsockets::Client for Client {
