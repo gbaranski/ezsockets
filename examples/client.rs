@@ -18,12 +18,7 @@ impl ezsockets::Client for Client {
         Ok(None)
     }
 
-    async fn closed(
-        &mut self,
-        code: Option<ezsockets::CloseCode>,
-        reason: Option<String>,
-    ) -> Result<(), BoxError> {
-        println!("connection closed. close code: {code:#?}. reason: {reason:#?}");
+    async fn closed(&mut self) -> Result<(), BoxError> {
         Ok(())
     }
 }
@@ -33,7 +28,8 @@ async fn main() {
     tracing_subscriber::fmt::init();
     let client = Client {};
     let url = Url::parse("ws://localhost:8080").unwrap();
-    let (handle, future) = ezsockets::connect(client, ClientConfig::new(url)).await;
+    let config = ClientConfig::new(url).basic("username", "password");
+    let (handle, future) = ezsockets::connect(client, config).await;
     tokio::spawn(async move {
         future.await.unwrap();
     });

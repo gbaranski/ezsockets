@@ -39,6 +39,7 @@ impl SessionHandle {
 
 pub(crate) struct SessionActor<E: Session> {
     pub extension: E,
+    pub id: E::ID,
     receiver: mpsc::UnboundedReceiver<Message>,
     stream: WebSocketStream,
     heartbeat: Instant,
@@ -47,12 +48,14 @@ pub(crate) struct SessionActor<E: Session> {
 impl<E: Session> SessionActor<E> {
     pub(crate) fn new(
         extension: E,
+        id: E::ID,
         receiver: mpsc::UnboundedReceiver<Message>,
         stream: WebSocketStream,
         heartbeat: Instant,
     ) -> Self {
         Self {
             extension,
+            id,
             receiver,
             stream,
             heartbeat,
@@ -77,6 +80,7 @@ impl<E: Session> SessionActor<E> {
                 }
                 Some(message) = self.stream.next() => {
                     let message = message?;
+                    tracing::debug!(id = %self.id, "received message: {:?}", message);
                     let message = match message {
                         tungstenite::Message::Text(text) => self.extension.text(text).await?,
                         tungstenite::Message::Binary(bytes) => self.extension.binary(bytes).await?,

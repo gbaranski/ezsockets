@@ -53,10 +53,12 @@ where
         let extension = self.extension.connected(handle, address).await?;
         let id = extension.id().clone();
         tracing::info!(%id, %address, "connected");
-        let mut actor = SessionActor::new(extension, receiver, websocket_stream, Instant::now());
+        let mut actor =
+            SessionActor::new(extension, id, receiver, websocket_stream, Instant::now());
         tokio::spawn(
             async move {
                 let result = actor.run().await;
+                let id = actor.id;
                 match result {
                     Ok(Some(CloseFrame { code, reason })) => {
                         tracing::info!(%id, ?code, %reason, "connection closed")
