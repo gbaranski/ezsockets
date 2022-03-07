@@ -27,7 +27,7 @@ impl ezsockets::Client for Client {
 async fn main() {
     tracing_subscriber::fmt::init();
     let client = Client {};
-    let url = Url::parse("ws://localhost:8080").unwrap();
+    let url = Url::parse("ws://localhost:3000/websocket").unwrap();
     let config = ClientConfig::new(url).basic("username", "password");
     let (handle, future) = ezsockets::connect(client, config).await;
     tokio::spawn(async move {

@@ -1,10 +1,15 @@
 use async_trait::async_trait;
+use axum_crate::extract::Extension;
+use axum_crate::response::IntoResponse;
+use axum_crate::routing::get;
+use axum_crate::Router;
+use ezsockets::axum::EzSocketUpgrade;
 use ezsockets::BoxError;
 use ezsockets::ServerHandle;
 use ezsockets::SessionHandle;
 use std::collections::HashMap;
 use std::io::BufRead;
-
+use std::net::SocketAddr;
 type SessionID = u8;
 
 #[derive(Debug)]
@@ -97,7 +102,7 @@ impl ezsockets::Session for Session {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let (handle, _) = ezsockets::run(
+    let (server, _) = ezsockets::run(
         |handle| Server {
             sessions: HashMap::new(),
             handle,
@@ -105,15 +110,43 @@ async fn main() {
         "127.0.0.1:8080",
     )
     .await;
+
+    let app = Router::new()
+        .route("/websocket", get(websocket_handler))
+        .layer(Extension(server.clone()));
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    tokio::spawn(async move {
+        tracing::debug!("listening on {}", addr);
+        axum_crate::Server::bind(&addr)
+            .serve(app.into_make_service_with_connect_info::<SocketAddr, _>())
+            .await
+            .unwrap();
+    });
+
     let stdin = std::io::stdin();
     let lines = stdin.lock().lines();
     for line in lines {
         let line = line.unwrap();
-        handle
+        server
             .call(Message::Broadcast {
                 text: line,
                 exceptions: vec![],
             })
             .await;
     }
+}
+
+async fn websocket_handler(
+    Extension(server): Extension<ServerHandle<Server>>,
+    ezsocket: EzSocketUpgrade,
+) -> impl IntoResponse {
+    let id = 1; // TODO: extract the ID from somewhere
+    let session = Session {
+        id,
+        server: server.clone(),
+    };
+    ezsocket.on_upgrade(|socket, address| async move {
+        server.new_connection(session, socket, address).await;
+    })
 }

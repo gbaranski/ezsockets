@@ -1,16 +1,14 @@
 use crate::BoxError;
 use crate::CloseFrame;
 use crate::Message;
-use crate::WebSocketStream;
+use crate::WebSocket;
+use crate::websocket::RawMessage;
 use async_trait::async_trait;
-use futures::SinkExt;
 use tokio::sync::mpsc;
-use tokio::time::Instant;
-use tokio_tungstenite::tungstenite;
 
 #[async_trait]
 pub trait Session: Send {
-    type ID: Clone + std::fmt::Debug + std::fmt::Display;
+    type ID: Send + Sync + Clone + std::fmt::Debug + std::fmt::Display;
 
     fn id(&self) -> &Self::ID;
     async fn text(&mut self, text: String) -> Result<Option<Message>, BoxError>;
@@ -24,7 +22,7 @@ pub struct SessionHandle {
 }
 
 impl SessionHandle {
-    pub fn new(sender: mpsc::UnboundedSender<Message>) -> Self {
+    pub(crate) fn new(sender: mpsc::UnboundedSender<Message>) -> Self {
         Self { sender }
     }
 
@@ -41,8 +39,7 @@ pub(crate) struct SessionActor<E: Session> {
     pub extension: E,
     pub id: E::ID,
     receiver: mpsc::UnboundedReceiver<Message>,
-    stream: WebSocketStream,
-    heartbeat: Instant,
+    socket: WebSocket,
 }
 
 impl<E: Session> SessionActor<E> {
@@ -50,60 +47,51 @@ impl<E: Session> SessionActor<E> {
         extension: E,
         id: E::ID,
         receiver: mpsc::UnboundedReceiver<Message>,
-        stream: WebSocketStream,
-        heartbeat: Instant,
+        socket: WebSocket,
     ) -> Self {
         Self {
             extension,
             id,
             receiver,
-            stream,
-            heartbeat,
+            socket,
         }
     }
 
     pub(crate) async fn run(&mut self) -> Result<Option<CloseFrame>, BoxError> {
-        use futures::StreamExt;
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
 
         loop {
             tokio::select! {
                 Some(message) = self.receiver.recv() => {
-                    let message = match message {
-                        Message::Text(text) => tungstenite::Message::Text(text),
-                        Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
-                        Message::Close(frame) => {
-                            return Ok(frame);
-                        }
-                    };
-                    self.stream.send(message).await?;
+                    self.socket.send(message.clone().into()).await;
+                    if let Message::Close(frame) = message {
+                        return Ok(frame)
+                    }
                 }
-                Some(message) = self.stream.next() => {
-                    let message = message?;
-                    tracing::debug!(id = %self.id, "received message: {:?}", message);
+                Some(message) = self.socket.recv() => {
                     let message = match message {
-                        tungstenite::Message::Text(text) => self.extension.text(text).await?,
-                        tungstenite::Message::Binary(bytes) => self.extension.binary(bytes).await?,
-                        tungstenite::Message::Ping(bytes) => {
-                            self.stream.send(tungstenite::Message::Pong(bytes)).await?;
+                        RawMessage::Text(text) => self.extension.text(text).await?,
+                        RawMessage::Binary(bytes) => self.extension.binary(bytes).await?,
+                        RawMessage::Ping(bytes) => {
+                            self.socket.send(RawMessage::Pong(bytes)).await;
                             None
-                        }
-                        tungstenite::Message::Pong(_) => {
+                        },
+                        RawMessage::Pong(bytes) => {
                             // TODO: Maybe handle bytes?
-                            self.heartbeat = Instant::now();
+                            // self.heartbeat = Instant::now();
                             None
-                        }
-                        tungstenite::Message::Close(frame) => {
+                        },
+                        RawMessage::Close(frame) => {
                             return Ok(frame.map(CloseFrame::from))
-                        }
-                        tungstenite::Message::Frame(_) => todo!(),
+                        },
+
                     };
                     if let Some(message) = message {
-                        self.stream.send(message.into()).await?;
+                        self.socket.send(message.into()).await;
                     }
                 }
                 _ = interval.tick() => {
-                    self.stream.send(tungstenite::Message::Ping(Vec::new())).await?;
+                    self.socket.send(RawMessage::Ping(vec![])).await;
                 }
                 else => break,
             }

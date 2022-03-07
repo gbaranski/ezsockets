@@ -3,10 +3,13 @@ mod server;
 mod session;
 mod websocket;
 
+#[cfg(feature = "axum")]
+pub mod axum;
+
 pub use websocket::CloseCode;
 pub use websocket::CloseFrame;
 pub use websocket::Message;
-pub(crate) use websocket::WebSocketStream;
+pub(crate) use websocket::WebSocket;
 
 pub use client::connect;
 pub use client::ClientConfig;

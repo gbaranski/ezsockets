@@ -40,10 +40,16 @@ impl ClientConfig {
     fn connect_http_request(&self) -> http::Request<()> {
         let mut http_request = http::Request::builder()
             .uri(self.url.as_str())
+            .method("GET")
+            .header("Host", self.url.host().unwrap().to_string())
+            .header("Connection", "Upgrade")
+            .header("Upgrade", "websocket")
+            .header("Sec-WebSocket-Version", "13")
+            .header("Sec-WebSocket-Key", tungstenite::handshake::client::generate_key())
             .body(())
             .unwrap();
-        while let Some((key, value)) = self.headers.iter().next() {
-            http_request.headers_mut().insert(key, value.to_owned());
+        for (key, value) in self.headers.clone() {
+            http_request.headers_mut().insert(key.unwrap(), value);
         }
         http_request
     }
@@ -82,6 +88,7 @@ pub async fn connect<C: Client + 'static>(
     let handle = ClientHandle { sender };
     let future = tokio::spawn(async move {
         let http_request = config.connect_http_request();
+        tracing::info!("connecting to {}...", config.url);
         let (stream, _) = tokio_tungstenite::connect_async(http_request).await?;
         tracing::info!("connected to {}", config.url);
         let mut actor = ClientActor {

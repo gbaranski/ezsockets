@@ -22,7 +22,143 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-pub(crate) type WebSocketStream = tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>;
+use crate::BoxError;
+use futures::{Sink, SinkExt, Stream, StreamExt, TryStreamExt};
+use std::{
+    marker::PhantomData,
+};
+use tokio::sync::{mpsc, oneshot};
+use tokio_tungstenite::tungstenite;
+use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
+
+#[derive(Debug)]
+struct WebSocketSinkActor<M, S>
+where
+    M: From<RawMessage>,
+    S: Sink<M, Error = BoxError> + Unpin,
+{
+    receiver: mpsc::UnboundedReceiver<RawMessage>,
+    sink: S,
+    phantom: PhantomData<M>,
+}
+
+impl<M, S> WebSocketSinkActor<M, S>
+where
+    M: From<RawMessage>,
+    S: Sink<M, Error = BoxError> + Unpin,
+{
+    async fn run(&mut self) -> Result<(), BoxError> {
+        while let Some(message) = self.receiver.recv().await {
+            self.sink.send(M::from(message)).await?
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WebSocketSink {
+    sender: mpsc::UnboundedSender<RawMessage>,
+}
+
+impl WebSocketSink {
+    pub fn new<M, S>(sink: S) -> Self
+    where
+        M: From<RawMessage> + Send + 'static,
+        S: Sink<M, Error = BoxError> + Unpin + Send + 'static,
+    {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let mut actor = WebSocketSinkActor {
+            receiver,
+            sink,
+            phantom: Default::default(),
+        };
+        tokio::spawn(async move { actor.run().await.unwrap() });
+        Self { sender }
+    }
+    
+    pub async fn send(&self, message: RawMessage) {
+        self.sender.send(message).unwrap();
+    }
+}
+
+#[derive(Debug)]
+struct WebSocketStreamActor<M, S>
+where
+    M: Into<RawMessage>,
+    S: Stream<Item = Result<M, BoxError>> + Unpin,
+{
+    receiver: mpsc::UnboundedReceiver<oneshot::Sender<Option<RawMessage>>>,
+    stream: S,
+}
+
+impl<M, S> WebSocketStreamActor<M, S>
+where
+    M: Into<RawMessage> + std::fmt::Debug,
+    S: Stream<Item = Result<M, BoxError>> + Unpin,
+{
+    async fn run(&mut self) -> Result<(), BoxError> {
+        while let Some(respond_to) = self.receiver.recv().await {
+            let message = self.stream.next().await.transpose()?;
+            let result = respond_to.send(message.map(M::into)); // TODO: Handle the error
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WebSocketStream {
+    sender: mpsc::UnboundedSender<oneshot::Sender<Option<RawMessage>>>,
+}
+
+impl WebSocketStream {
+    pub fn new<M, S>(stream: S) -> Self
+    where
+        M: Into<RawMessage> + std::fmt::Debug + Send + 'static,
+        S: Stream<Item = Result<M, BoxError>> + Unpin + Send + 'static,
+    {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let mut actor = WebSocketStreamActor {
+            receiver,
+            stream,
+        };
+        tokio::spawn(async move { actor.run().await.unwrap() });
+        Self { sender }
+    }
+
+    pub async fn recv(&self) -> Option<RawMessage> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender.send(sender).unwrap();
+        receiver.await.unwrap()
+    }
+}
+
+
+#[derive(Debug)]
+pub struct WebSocket {
+    sink: WebSocketSink,
+    stream: WebSocketStream,
+}
+
+impl WebSocket {
+    pub fn new<M, E: std::error::Error, S>(socket: S) -> Self
+    where
+        M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,
+        E: Into<BoxError>,
+        S: Sink<M, Error = E> + Unpin + Stream<Item = Result<M, E>> + Unpin + Send + 'static,
+    {
+        let (sink, stream) = socket.sink_err_into().err_into().split();
+        let (sink, stream) = (WebSocketSink::new(sink), WebSocketStream::new(stream));
+        Self { sink: sink, stream }
+    }
+
+    pub async fn send(&self, message: RawMessage) {
+        self.sink.send(message).await;
+    }
+
+    pub async fn recv(&self) -> Option<RawMessage> {
+        self.stream.recv().await
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct CloseFrame {
@@ -120,9 +256,6 @@ pub enum CloseCode {
     Bad(u16),
 }
 
-use tokio_tungstenite::tungstenite;
-use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
-
 impl From<CloseCode> for TungsteniteCloseCode {
     fn from(code: CloseCode) -> Self {
         match code {
@@ -174,6 +307,50 @@ impl From<TungsteniteCloseCode> for CloseCode {
 }
 
 #[derive(Debug)]
+pub enum RawMessage {
+    Text(String),
+    Binary(Vec<u8>),
+    Ping(Vec<u8>),
+    Pong(Vec<u8>),
+    Close(Option<CloseFrame>),
+}
+
+impl From<Message> for RawMessage {
+    fn from(message: Message) -> Self {
+        match message {
+            Message::Text(text) => Self::Text(text),
+            Message::Binary(bytes) => Self::Binary(bytes),
+            Message::Close(frame) => Self::Close(frame.map(CloseFrame::from)),
+        }
+    }
+}
+
+impl From<tungstenite::Message> for RawMessage {
+    fn from(message: tungstenite::Message) -> Self {
+        match message {
+            tungstenite::Message::Text(text) => Self::Text(text),
+            tungstenite::Message::Binary(bytes) => Self::Binary(bytes),
+            tungstenite::Message::Ping(bytes) => Self::Ping(bytes),
+            tungstenite::Message::Pong(bytes) => Self::Pong(bytes),
+            tungstenite::Message::Close(frame) => Self::Close(frame.map(CloseFrame::from)),
+            tungstenite::Message::Frame(_) => unreachable!(),
+        }
+    }
+}
+
+impl From<RawMessage> for tungstenite::Message {
+    fn from(message: RawMessage) -> Self {
+        match message {
+            RawMessage::Text(text) => Self::Text(text),
+            RawMessage::Binary(bytes) => Self::Binary(bytes),
+            RawMessage::Ping(bytes) => Self::Ping(bytes),
+            RawMessage::Pong(bytes) => Self::Pong(bytes),
+            RawMessage::Close(frame) => Self::Close(frame.map(CloseFrame::into)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Message {
     Text(String),
     Binary(Vec<u8>),

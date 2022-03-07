@@ -15,11 +15,18 @@ tokio-tungstenite = "0.17.1"
 tracing = "0.1.31"
 url = "2.2.2"
 
+axum_crate = { package = "axum", version = "0.4.8", features = ["ws"], optional = true }
+acu = "0.3.3"
+
 [features]
-client = []
-server = []
+default = ["axum"] # TODO: Remove that
+axum = ["axum_crate"]
 
 [dev-dependencies]
 thiserror = "1.0.30"
 tokio = { version = "1.17.0", features = ["full"] }
 tracing-subscriber = "0.3.9"
+
+[[example]]
+name = "server-axum"
+required-features = ["axum"]

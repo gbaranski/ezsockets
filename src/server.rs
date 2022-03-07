@@ -3,18 +3,27 @@ use crate::CloseFrame;
 use crate::Session;
 use crate::SessionActor;
 use crate::SessionHandle;
+use crate::WebSocket;
 use async_trait::async_trait;
 use futures::Future;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
-use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tokio::time::Instant;
 use tracing::Instrument;
 use tracing::Span;
 
+#[derive(Debug)]
+enum ServerMessage<E: Server> {
+    NewConnection {
+        session: E::Session,
+        socket: WebSocket,
+        address: SocketAddr,
+    },
+    Message(E::Message),
+}
+
 struct ServerActor<E: Server> {
-    receiver: mpsc::UnboundedReceiver<E::Message>,
+    receiver: mpsc::UnboundedReceiver<ServerMessage<E>>,
     extension: E,
     address: SocketAddr,
 }
@@ -22,7 +31,6 @@ struct ServerActor<E: Server> {
 impl<E: Server> ServerActor<E>
 where
     E: Send + 'static,
-    E::Message: Send,
     <E::Session as Session>::ID: Send,
 {
     async fn run(&mut self) -> Result<(), BoxError> {
@@ -30,11 +38,17 @@ where
         let listener = tokio::net::TcpListener::bind(self.address).await?;
         loop {
             tokio::select! {
-                Ok((stream, address)) = listener.accept() => {
-                    self.accept_connection(stream, address).await?;
+                Ok((socket, address)) = listener.accept() => {
+                    let socket = tokio_tungstenite::accept_async(socket).await?;
+                    let socket = WebSocket::new(socket);
+                    let session = self.extension.accept().await?;
+                    self.accept_connection(session, socket, address).await?;
                 }
                 Some(message) = self.receiver.recv() => {
-                    self.extension.message(message).await;
+                    match message {
+                        ServerMessage::NewConnection { session, socket, address } => self.accept_connection(session, socket, address).await?,
+                        ServerMessage::Message(message) => self.extension.message(message).await,
+                    };
                 }
                 else => break,
             }
@@ -44,17 +58,16 @@ where
 
     async fn accept_connection(
         &mut self,
-        stream: TcpStream,
+        session: E::Session,
+        socket: WebSocket,
         address: SocketAddr,
     ) -> Result<(), BoxError> {
-        let websocket_stream = tokio_tungstenite::accept_async(stream).await?;
+        let id = session.id().to_owned();
         let (sender, receiver) = mpsc::unbounded_channel();
         let handle = SessionHandle::new(sender);
-        let extension = self.extension.connected(handle, address).await?;
-        let id = extension.id().clone();
+        self.extension.connected(id.clone(), handle).await?;
         tracing::info!(%id, %address, "connected");
-        let mut actor =
-            SessionActor::new(extension, id, receiver, websocket_stream, Instant::now());
+        let mut actor = SessionActor::new(session, id, receiver, socket);
         tokio::spawn(
             async move {
                 let result = actor.run().await;
@@ -78,27 +91,43 @@ where
 #[async_trait]
 pub trait Server: Send {
     type Session: Session;
-    type Message;
+    type Message: Send;
 
-    async fn connected(
-        &mut self,
-        handle: SessionHandle,
-        address: SocketAddr,
-    ) -> Result<Self::Session, BoxError>;
+    async fn accept(&mut self) -> Result<Self::Session, BoxError>;
+    async fn connected(&mut self, id: <Self::Session as Session>::ID, handle: SessionHandle) -> Result<(), BoxError>;
     async fn message(&mut self, message: Self::Message);
 }
 
 #[derive(Debug)]
 pub struct ServerHandle<E: Server> {
-    sender: mpsc::UnboundedSender<E::Message>,
+    sender: mpsc::UnboundedSender<ServerMessage<E>>,
 }
 
 impl<E: Server> ServerHandle<E>
 where
     E::Message: std::fmt::Debug,
 {
+    pub async fn new_connection(
+        &self,
+        session: E::Session,
+        socket: WebSocket,
+        address: SocketAddr,
+    ) {
+        self.sender
+            .send(ServerMessage::NewConnection {
+                session,
+                socket,
+                address,
+            })
+            .map_err(|_| ())
+            .unwrap();
+    }
+
     pub async fn call(&self, message: E::Message) {
-        self.sender.send(message).unwrap();
+        self.sender
+            .send(ServerMessage::Message(message))
+            .map_err(|_| ())
+            .unwrap();
     }
 }
 
