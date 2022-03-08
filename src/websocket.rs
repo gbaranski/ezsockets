@@ -25,7 +25,7 @@
 use crate::BoxError;
 use futures::{Sink, SinkExt, Stream, StreamExt, TryStreamExt};
 use std::marker::PhantomData;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
 
@@ -85,7 +85,7 @@ where
     M: Into<RawMessage>,
     S: Stream<Item = Result<M, BoxError>> + Unpin,
 {
-    receiver: mpsc::UnboundedReceiver<oneshot::Sender<Option<RawMessage>>>,
+    sender: mpsc::UnboundedSender<RawMessage>,
     stream: S,
 }
 
@@ -95,19 +95,16 @@ where
     S: Stream<Item = Result<M, BoxError>> + Unpin,
 {
     async fn run(&mut self) -> Result<(), BoxError> {
-        while let Some(respond_to) = self.receiver.recv().await {
-            let message = self.stream.next().await.transpose()?;
-            if !respond_to.is_closed() {
-                respond_to.send(message.map(M::into)).unwrap()
-            }
+        while let Some(message) = self.stream.next().await.transpose()? {
+            self.sender.send(message.into()).unwrap();
         }
         Ok(())
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WebSocketStream {
-    sender: mpsc::UnboundedSender<oneshot::Sender<Option<RawMessage>>>,
+    receiver: mpsc::UnboundedReceiver<RawMessage>
 }
 
 impl WebSocketStream {
@@ -117,15 +114,13 @@ impl WebSocketStream {
         S: Stream<Item = Result<M, BoxError>> + Unpin + Send + 'static,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
-        let mut actor = WebSocketStreamActor { receiver, stream };
+        let mut actor = WebSocketStreamActor { sender, stream };
         tokio::spawn(async move { actor.run().await.unwrap() });
-        Self { sender }
+        Self { receiver }
     }
 
-    pub async fn recv(&self) -> Option<RawMessage> {
-        let (sender, receiver) = oneshot::channel();
-        self.sender.send(sender).unwrap();
-        receiver.await.unwrap()
+    pub async fn recv(&mut self) -> Option<RawMessage> {
+        self.receiver.recv().await
     }
 }
 
@@ -151,7 +146,7 @@ impl WebSocket {
         self.sink.send(message).await;
     }
 
-    pub async fn recv(&self) -> Option<RawMessage> {
+    pub async fn recv(&mut self) -> Option<RawMessage> {
         self.stream.recv().await
     }
 }
@@ -302,7 +297,7 @@ impl From<TungsteniteCloseCode> for CloseCode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RawMessage {
     Text(String),
     Binary(Vec<u8>),
