@@ -15,7 +15,6 @@ enum Message {
         text: String,
         exceptions: Vec<SessionID>,
     },
-    Disconnected(SessionID),
 }
 
 struct Server {
@@ -28,7 +27,11 @@ impl ezsockets::Server for Server {
     type Message = Message;
     type Session = Session;
 
-    async fn accept(&mut self, socket: WebSocket, _address: SocketAddr) -> Result<SessionHandle, BoxError> {
+    async fn accept(
+        &mut self,
+        socket: WebSocket,
+        _address: SocketAddr,
+    ) -> Result<SessionHandle, BoxError> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session {
             id,
@@ -39,6 +42,14 @@ impl ezsockets::Server for Server {
         Ok(handle)
     }
 
+    async fn disconnected(
+        &mut self,
+        id: <Self::Session as ezsockets::Session>::ID,
+    ) -> Result<(), BoxError> {
+        assert!(self.sessions.remove(&id).is_some());
+        Ok(())
+    }
+
     async fn message(&mut self, message: Self::Message) {
         match message {
             Message::Broadcast { exceptions, text } => {
@@ -47,12 +58,9 @@ impl ezsockets::Server for Server {
                     .iter()
                     .filter(|(id, _)| !exceptions.contains(id));
                 for (id, handle) in sessions {
-                    println!("broadcasting {text} to {id}");
+                    tracing::info!("broadcasting {text} to {id}");
                     handle.text(text.clone()).await;
                 }
-            }
-            Message::Disconnected(id) => {
-                self.sessions.remove(&id);
             }
         };
     }
@@ -82,11 +90,6 @@ impl ezsockets::Session for Session {
 
     async fn binary(&mut self, _bytes: Vec<u8>) -> Result<Option<ezsockets::Message>, BoxError> {
         unimplemented!()
-    }
-
-    async fn disconnected(&mut self) -> Result<(), BoxError> {
-        self.server.call(Message::Disconnected(self.id)).await;
-        Ok(())
     }
 }
 

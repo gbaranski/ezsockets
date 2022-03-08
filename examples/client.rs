@@ -9,12 +9,12 @@ struct Client {}
 #[async_trait]
 impl ezsockets::Client for Client {
     async fn text(&mut self, text: String) -> Result<Option<ezsockets::Message>, BoxError> {
-        println!("received message: {text}");
+        tracing::info!("received message: {text}");
         Ok(None)
     }
 
     async fn binary(&mut self, bytes: Vec<u8>) -> Result<Option<ezsockets::Message>, BoxError> {
-        println!("received bytes: {bytes:?}");
+        tracing::info!("received bytes: {bytes:?}");
         Ok(None)
     }
 

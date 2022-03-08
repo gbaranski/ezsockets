@@ -67,6 +67,7 @@ pub trait Server: Send {
         socket: WebSocket,
         address: SocketAddr,
     ) -> Result<SessionHandle, BoxError>;
+    async fn disconnected(&mut self, id: <Self::Session as Session>::ID) -> Result<(), BoxError>;
     async fn message(&mut self, message: Self::Message);
 }
 

@@ -13,7 +13,6 @@ pub trait Session: Send {
     fn id(&self) -> &Self::ID;
     async fn text(&mut self, text: String) -> Result<Option<Message>, BoxError>;
     async fn binary(&mut self, bytes: Vec<u8>) -> Result<Option<Message>, BoxError>;
-    async fn disconnected(&mut self) -> Result<(), BoxError>;
 }
 
 #[derive(Debug, Clone)]
