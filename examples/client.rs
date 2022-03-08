@@ -37,6 +37,7 @@ async fn main() {
     let lines = stdin.lock().lines();
     for line in lines {
         let line = line.unwrap();
+        tracing::info!("sending {line}");
         handle.text(line).await;
     }
 }

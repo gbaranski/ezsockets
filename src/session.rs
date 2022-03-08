@@ -1,8 +1,8 @@
+use crate::websocket::RawMessage;
 use crate::BoxError;
 use crate::CloseFrame;
 use crate::Message;
 use crate::WebSocket;
-use crate::websocket::RawMessage;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
@@ -22,7 +22,12 @@ pub struct SessionHandle {
 }
 
 impl SessionHandle {
-    pub(crate) fn new(sender: mpsc::UnboundedSender<Message>) -> Self {
+    pub fn create<S: Session + 'static>(session: S, socket: WebSocket) -> Self {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let id = session.id().to_owned();
+        let mut actor = SessionActor::new(session, id, receiver, socket);
+        tokio::spawn(async move { actor.run().await });
+
         Self { sender }
     }
 
@@ -57,46 +62,56 @@ impl<E: Session> SessionActor<E> {
         }
     }
 
-    pub(crate) async fn run(&mut self) -> Result<Option<CloseFrame>, BoxError> {
+    pub(crate) async fn run(&mut self) {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
-
-        loop {
-            tokio::select! {
-                Some(message) = self.receiver.recv() => {
-                    self.socket.send(message.clone().into()).await;
-                    if let Message::Close(frame) = message {
-                        return Ok(frame)
+        let id = self.id.to_owned();
+        let result: Result<_, BoxError> = async move {
+            loop {
+                tokio::select! {
+                    Some(message) = self.receiver.recv() => {
+                        self.socket.send(message.clone().into()).await;
+                        if let Message::Close(frame) = message {
+                            return Ok(frame)
+                        }
                     }
-                }
-                Some(message) = self.socket.recv() => {
-                    let message = match message {
-                        RawMessage::Text(text) => self.extension.text(text).await?,
-                        RawMessage::Binary(bytes) => self.extension.binary(bytes).await?,
-                        RawMessage::Ping(bytes) => {
-                            self.socket.send(RawMessage::Pong(bytes)).await;
-                            None
-                        },
-                        RawMessage::Pong(bytes) => {
-                            // TODO: Maybe handle bytes?
-                            // self.heartbeat = Instant::now();
-                            None
-                        },
-                        RawMessage::Close(frame) => {
-                            return Ok(frame.map(CloseFrame::from))
-                        },
+                    Some(message) = self.socket.recv() => {
+                        let message = match message {
+                            RawMessage::Text(text) => self.extension.text(text).await?,
+                            RawMessage::Binary(bytes) => self.extension.binary(bytes).await?,
+                            RawMessage::Ping(bytes) => {
+                                self.socket.send(RawMessage::Pong(bytes)).await;
+                                None
+                            },
+                            RawMessage::Pong(_bytes) => {
+                                // TODO: Maybe handle bytes?
+                                // self.heartbeat = Instant::now();
+                                None
+                            },
+                            RawMessage::Close(frame) => {
+                                return Ok(frame.map(CloseFrame::from))
+                            },
 
-                    };
-                    if let Some(message) = message {
-                        self.socket.send(message.into()).await;
+                        };
+                        if let Some(message) = message {
+                            self.socket.send(message.into()).await;
+                        }
                     }
+                    _ = interval.tick() => {
+                        self.socket.send(RawMessage::Ping(vec![])).await;
+                    }
+                    else => break,
                 }
-                _ = interval.tick() => {
-                    self.socket.send(RawMessage::Ping(vec![])).await;
-                }
-                else => break,
             }
+            Ok(None)
         }
+        .await;
 
-        Ok(None)
+        match result {
+            Ok(Some(CloseFrame { code, reason })) => {
+                tracing::info!(%id, ?code, %reason, "connection closed")
+            }
+            Ok(None) => tracing::info!(%id, "connection closed"),
+            Err(err) => tracing::warn!(%id, "connection error: {err}"),
+        };
     }
 }

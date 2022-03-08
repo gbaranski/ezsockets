@@ -3,6 +3,7 @@ use axum_crate::extract::Extension;
 use axum_crate::response::IntoResponse;
 use axum_crate::routing::get;
 use axum_crate::Router;
+use ezsockets::WebSocket;
 use ezsockets::axum::EzSocketUpgrade;
 use ezsockets::BoxError;
 use ezsockets::ServerHandle;
@@ -31,21 +32,15 @@ impl ezsockets::Server for Server {
     type Message = Message;
     type Session = Session;
 
-    async fn accept(&mut self) -> Result<Self::Session, BoxError> {
+    async fn accept(&mut self, socket: WebSocket, _address: SocketAddr) -> Result<SessionHandle, BoxError> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
-        Ok(Session {
+        let session = Session {
             id,
             server: self.handle.clone(),
-        })
-    }
-
-    async fn connected(
-        &mut self,
-        id: <Self::Session as ezsockets::Session>::ID,
-        handle: SessionHandle,
-    ) -> Result<(), BoxError> {
-        self.sessions.insert(id, handle);
-        Ok(())
+        };
+        let handle = SessionHandle::create(session, socket);
+        self.sessions.insert(id, handle.clone());
+        Ok(handle)
     }
 
     async fn message(&mut self, message: Self::Message) {
@@ -141,12 +136,7 @@ async fn websocket_handler(
     Extension(server): Extension<ServerHandle<Server>>,
     ezsocket: EzSocketUpgrade,
 ) -> impl IntoResponse {
-    let id = 1; // TODO: extract the ID from somewhere
-    let session = Session {
-        id,
-        server: server.clone(),
-    };
     ezsocket.on_upgrade(|socket, address| async move {
-        server.new_connection(session, socket, address).await;
+        server.accept(socket, address).await;
     })
 }

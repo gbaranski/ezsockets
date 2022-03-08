@@ -2,8 +2,10 @@ use async_trait::async_trait;
 use ezsockets::BoxError;
 use ezsockets::ServerHandle;
 use ezsockets::SessionHandle;
+use ezsockets::WebSocket;
 use std::collections::HashMap;
 use std::io::BufRead;
+use std::net::SocketAddr;
 
 type SessionID = u8;
 
@@ -26,21 +28,15 @@ impl ezsockets::Server for Server {
     type Message = Message;
     type Session = Session;
 
-    async fn accept(&mut self) -> Result<Self::Session, BoxError> {
+    async fn accept(&mut self, socket: WebSocket, _address: SocketAddr) -> Result<SessionHandle, BoxError> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
-        Ok(Session {
+        let session = Session {
             id,
             server: self.handle.clone(),
-        })
-    }
-
-    async fn connected(
-        &mut self,
-        id: <Self::Session as ezsockets::Session>::ID,
-        handle: SessionHandle,
-    ) -> Result<(), BoxError> {
-        self.sessions.insert(id, handle);
-        Ok(())
+        };
+        let handle = SessionHandle::create(session, socket);
+        self.sessions.insert(id, handle.clone());
+        Ok(handle)
     }
 
     async fn message(&mut self, message: Self::Message) {

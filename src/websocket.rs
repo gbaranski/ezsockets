@@ -24,9 +24,7 @@
 
 use crate::BoxError;
 use futures::{Sink, SinkExt, Stream, StreamExt, TryStreamExt};
-use std::{
-    marker::PhantomData,
-};
+use std::marker::PhantomData;
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
@@ -75,7 +73,7 @@ impl WebSocketSink {
         tokio::spawn(async move { actor.run().await.unwrap() });
         Self { sender }
     }
-    
+
     pub async fn send(&self, message: RawMessage) {
         self.sender.send(message).unwrap();
     }
@@ -99,7 +97,9 @@ where
     async fn run(&mut self) -> Result<(), BoxError> {
         while let Some(respond_to) = self.receiver.recv().await {
             let message = self.stream.next().await.transpose()?;
-            let result = respond_to.send(message.map(M::into)); // TODO: Handle the error
+            if !respond_to.is_closed() {
+                respond_to.send(message.map(M::into)).unwrap()
+            }
         }
         Ok(())
     }
@@ -117,10 +117,7 @@ impl WebSocketStream {
         S: Stream<Item = Result<M, BoxError>> + Unpin + Send + 'static,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
-        let mut actor = WebSocketStreamActor {
-            receiver,
-            stream,
-        };
+        let mut actor = WebSocketStreamActor { receiver, stream };
         tokio::spawn(async move { actor.run().await.unwrap() });
         Self { sender }
     }
@@ -131,7 +128,6 @@ impl WebSocketStream {
         receiver.await.unwrap()
     }
 }
-
 
 #[derive(Debug)]
 pub struct WebSocket {

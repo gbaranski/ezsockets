@@ -1,7 +1,5 @@
 use crate::BoxError;
-use crate::CloseFrame;
 use crate::Session;
-use crate::SessionActor;
 use crate::SessionHandle;
 use crate::WebSocket;
 use async_trait::async_trait;
@@ -9,13 +7,10 @@ use futures::Future;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 use tokio::sync::mpsc;
-use tracing::Instrument;
-use tracing::Span;
 
 #[derive(Debug)]
 enum ServerMessage<E: Server> {
-    NewConnection {
-        session: E::Session,
+    Accept {
         socket: WebSocket,
         address: SocketAddr,
     },
@@ -41,12 +36,11 @@ where
                 Ok((socket, address)) = listener.accept() => {
                     let socket = tokio_tungstenite::accept_async(socket).await?;
                     let socket = WebSocket::new(socket);
-                    let session = self.extension.accept().await?;
-                    self.accept_connection(session, socket, address).await?;
+                    self.accept(socket, address).await?;
                 }
                 Some(message) = self.receiver.recv() => {
                     match message {
-                        ServerMessage::NewConnection { session, socket, address } => self.accept_connection(session, socket, address).await?,
+                        ServerMessage::Accept { socket, address } => { self.accept(socket, address).await?; },
                         ServerMessage::Message(message) => self.extension.message(message).await,
                     };
                 }
@@ -56,34 +50,9 @@ where
         Ok(())
     }
 
-    async fn accept_connection(
-        &mut self,
-        session: E::Session,
-        socket: WebSocket,
-        address: SocketAddr,
-    ) -> Result<(), BoxError> {
-        let id = session.id().to_owned();
-        let (sender, receiver) = mpsc::unbounded_channel();
-        let handle = SessionHandle::new(sender);
-        self.extension.connected(id.clone(), handle).await?;
-        tracing::info!(%id, %address, "connected");
-        let mut actor = SessionActor::new(session, id, receiver, socket);
-        tokio::spawn(
-            async move {
-                let result = actor.run().await;
-                let id = actor.id;
-                match result {
-                    Ok(Some(CloseFrame { code, reason })) => {
-                        tracing::info!(%id, ?code, %reason, "connection closed")
-                    }
-                    Ok(None) => tracing::info!(%id, "connection closed"),
-                    Err(err) => tracing::warn!(%id, "connection error: {err}"),
-                };
-                actor.extension.disconnected().await?;
-                Ok::<(), BoxError>(())
-            }
-            .instrument(Span::current()),
-        );
+    async fn accept(&mut self, socket: WebSocket, address: SocketAddr) -> Result<(), BoxError> {
+        self.extension.accept(socket, address).await?;
+        tracing::info!("connection from {address} accepted");
         Ok(())
     }
 }
@@ -93,8 +62,11 @@ pub trait Server: Send {
     type Session: Session;
     type Message: Send;
 
-    async fn accept(&mut self) -> Result<Self::Session, BoxError>;
-    async fn connected(&mut self, id: <Self::Session as Session>::ID, handle: SessionHandle) -> Result<(), BoxError>;
+    async fn accept(
+        &mut self,
+        socket: WebSocket,
+        address: SocketAddr,
+    ) -> Result<SessionHandle, BoxError>;
     async fn message(&mut self, message: Self::Message);
 }
 
@@ -107,18 +79,9 @@ impl<E: Server> ServerHandle<E>
 where
     E::Message: std::fmt::Debug,
 {
-    pub async fn new_connection(
-        &self,
-        session: E::Session,
-        socket: WebSocket,
-        address: SocketAddr,
-    ) {
+    pub async fn accept(&self, socket: WebSocket, address: SocketAddr) {
         self.sender
-            .send(ServerMessage::NewConnection {
-                session,
-                socket,
-                address,
-            })
+            .send(ServerMessage::Accept { socket, address })
             .map_err(|_| ())
             .unwrap();
     }

@@ -9,7 +9,7 @@ pub mod axum;
 pub use websocket::CloseCode;
 pub use websocket::CloseFrame;
 pub use websocket::Message;
-pub(crate) use websocket::WebSocket;
+pub use websocket::WebSocket;
 
 pub use client::connect;
 pub use client::ClientConfig;
@@ -21,7 +21,6 @@ pub use server::Server;
 pub use server::ServerHandle;
 
 pub use session::Session;
-pub(crate) use session::SessionActor;
 pub use session::SessionHandle;
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
