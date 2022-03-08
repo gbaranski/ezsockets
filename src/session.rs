@@ -78,8 +78,7 @@ impl<E: Session> SessionActor<E> {
                         let message = match message {
                             RawMessage::Text(text) => self.extension.text(text).await?,
                             RawMessage::Binary(bytes) => self.extension.binary(bytes).await?,
-                            RawMessage::Ping(bytes) => {
-                                self.socket.send(RawMessage::Pong(bytes)).await;
+                            RawMessage::Ping(_) => {
                                 None
                             },
                             RawMessage::Pong(_bytes) => {
