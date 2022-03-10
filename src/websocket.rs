@@ -47,13 +47,14 @@ where
 {
     async fn run(&mut self) -> Result<(), BoxError> {
         while let Some(message) = self.receiver.recv().await {
-            self.sink.send(M::from(message)).await?
+            tracing::debug!("sending message: {:?}", message);
+            self.sink.send(M::from(message)).await?;
         }
         Ok(())
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WebSocketSink {
     sender: mpsc::UnboundedSender<RawMessage>,
 }
@@ -70,7 +71,7 @@ impl WebSocketSink {
             sink,
             phantom: Default::default(),
         };
-        tokio::spawn(async move { actor.run().await.unwrap() });
+        tokio::spawn(async move { actor.run().await });
         Self { sender }
     }
 
@@ -96,7 +97,9 @@ where
 {
     async fn run(&mut self) -> Result<(), BoxError> {
         while let Some(message) = self.stream.next().await.transpose()? {
-            self.sender.send(message.into()).unwrap();
+            let message = message.into();
+            tracing::debug!("received message: {:?}", message);
+            self.sender.send(message).unwrap();
         }
         Ok(())
     }
@@ -104,7 +107,8 @@ where
 
 #[derive(Debug)]
 pub struct WebSocketStream {
-    receiver: mpsc::UnboundedReceiver<RawMessage>
+    pub future: tokio::task::JoinHandle<Result<(), BoxError>>,
+    receiver: mpsc::UnboundedReceiver<RawMessage>,
 }
 
 impl WebSocketStream {
@@ -115,8 +119,8 @@ impl WebSocketStream {
     {
         let (sender, receiver) = mpsc::unbounded_channel();
         let mut actor = WebSocketStreamActor { sender, stream };
-        tokio::spawn(async move { actor.run().await.unwrap() });
-        Self { receiver }
+        let future = tokio::spawn(async move { actor.run().await });
+        Self { future, receiver }
     }
 
     pub async fn recv(&mut self) -> Option<RawMessage> {
@@ -126,8 +130,8 @@ impl WebSocketStream {
 
 #[derive(Debug)]
 pub struct WebSocket {
-    sink: WebSocketSink,
-    stream: WebSocketStream,
+    pub sink: WebSocketSink,
+    pub stream: WebSocketStream,
 }
 
 impl WebSocket {
