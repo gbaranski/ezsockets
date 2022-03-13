@@ -1,8 +1,9 @@
+use crate::websocket::RawMessage;
 use crate::BoxError;
 use crate::CloseFrame;
 use crate::Message;
+use crate::WebSocket;
 use async_trait::async_trait;
-use futures::SinkExt;
 use std::future::Future;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -45,7 +46,10 @@ impl ClientConfig {
             .header("Connection", "Upgrade")
             .header("Upgrade", "websocket")
             .header("Sec-WebSocket-Version", "13")
-            .header("Sec-WebSocket-Key", tungstenite::handshake::client::generate_key())
+            .header(
+                "Sec-WebSocket-Key",
+                tungstenite::handshake::client::generate_key(),
+            )
             .body(())
             .unwrap();
         for (key, value) in self.headers.clone() {
@@ -54,9 +58,6 @@ impl ClientConfig {
         http_request
     }
 }
-
-type WebSocketStream =
-    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 #[async_trait]
 pub trait Client: Send {
@@ -90,11 +91,12 @@ pub async fn connect<C: Client + 'static>(
         let http_request = config.connect_http_request();
         tracing::info!("connecting to {}...", config.url);
         let (stream, _) = tokio_tungstenite::connect_async(http_request).await?;
+        let socket = WebSocket::new(stream);
         tracing::info!("connected to {}", config.url);
         let mut actor = ClientActor {
             client,
             receiver,
-            stream,
+            socket,
             heartbeat: Instant::now(),
             config,
         };
@@ -121,56 +123,48 @@ pub async fn connect<C: Client + 'static>(
 struct ClientActor<C: Client> {
     client: C,
     receiver: mpsc::UnboundedReceiver<Message>,
-    stream: WebSocketStream,
+    socket: WebSocket,
     config: ClientConfig,
     heartbeat: Instant,
 }
 
 impl<C: Client> ClientActor<C> {
     async fn run(&mut self) -> Result<Option<CloseFrame>, BoxError> {
-        use futures::StreamExt;
         let mut ping_interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
 
         loop {
             tokio::select! {
                 Some(message) = self.receiver.recv() => {
-                    let message = match message {
-                        Message::Text(text) => tungstenite::Message::Text(text),
-                        Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
-                        Message::Close(frame) => {
-                            self.stream.close(frame.clone().map(CloseFrame::into)).await?;
-                            return Ok(frame);
-                        }
-                    };
-                    self.stream.send(message).await?;
+                    self.socket.send(message.clone().into()).await;
+                    if let Message::Close(frame) = message {
+                       return Ok(frame)
+                    }
                 }
-                Some(message) = self.stream.next() => {
-                    let message = message?;
-                    tracing::debug!("received message: {:?}", message);
-                    let message = match message {
-                        tungstenite::Message::Text(text) => self.client.text(text).await?,
-                        tungstenite::Message::Binary(bytes) => self.client.binary(bytes).await?,
-                        tungstenite::Message::Ping(bytes) => {
-                            self.stream.send(tungstenite::Message::Pong(bytes)).await?;
-                            None
-                        }
-                        tungstenite::Message::Pong(_) => {
+                Some(message) = self.socket.recv() => {
+                    let response = match message.to_owned() {
+                        RawMessage::Text(text) => self.client.text(text).await?,
+                        RawMessage::Binary(bytes) => self.client.binary(bytes).await?,
+                        RawMessage::Ping(_) => None,
+                        RawMessage::Pong(_) => {
                             // TODO: Maybe handle bytes?
                             self.heartbeat = Instant::now();
                             None
                         }
-                        tungstenite::Message::Close(frame) => {
+                        RawMessage::Close(_frame) => {
+                            // TODO: pass close frame to closed()
                             self.client.closed().await?;
-                            return Ok(frame.map(CloseFrame::from));
+                            None
                         }
-                        tungstenite::Message::Frame(_) => todo!(),
                     };
-                    if let Some(message) = message {
-                        self.stream.send(message.into()).await?;
+                    if let Some(message) = response.to_owned() {
+                        self.socket.send(message.into()).await;
+                    }
+                    if let RawMessage::Close(frame) = message {
+                        return Ok(frame);
                     }
                 }
                 _ = ping_interval.tick() => {
-                    self.stream.send(tungstenite::Message::Ping(Vec::new())).await?;
+                    self.socket.send(RawMessage::Ping(vec![])).await;
                 }
                 else => break,
             }
@@ -188,9 +182,10 @@ impl<C: Client> ClientActor<C> {
             tracing::info!("reconnecting attempt no: {}...", i);
             let result = tokio_tungstenite::connect_async(&self.config.url).await;
             match result {
-                Ok((stream, _)) => {
+                Ok((socket, _)) => {
                     tracing::error!("successfully reconnected");
-                    self.stream = stream;
+                    let socket = WebSocket::new(socket);
+                    self.socket = socket;
                     self.heartbeat = Instant::now();
                     return;
                 }
