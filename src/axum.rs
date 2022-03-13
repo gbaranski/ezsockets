@@ -18,13 +18,13 @@ use tokio_tungstenite::tungstenite;
 ///
 /// See the [module docs](self) for an example.
 #[derive(Debug)]
-pub struct EzSocketUpgrade {
+pub struct Upgrade {
     ws: ws::WebSocketUpgrade,
     address: SocketAddr,
 }
 
 #[async_trait]
-impl<B> FromRequest<B> for EzSocketUpgrade
+impl<B> FromRequest<B> for Upgrade
 where
     B: Send,
 {
@@ -91,7 +91,7 @@ impl From<RawMessage> for ws::Message {
     }
 }
 
-impl EzSocketUpgrade {
+impl Upgrade {
     /// Finalize upgrading the connection and call the provided callback with
     /// the stream.
     ///

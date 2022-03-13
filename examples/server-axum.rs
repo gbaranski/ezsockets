@@ -4,7 +4,7 @@ use axum_crate::response::IntoResponse;
 use axum_crate::routing::get;
 use axum_crate::Router;
 use ezsockets::Socket;
-use ezsockets::axum::EzSocketUpgrade;
+use ezsockets::axum::Upgrade;
 use ezsockets::BoxError;
 use ezsockets::ServerHandle;
 use ezsockets::SessionHandle;
@@ -134,7 +134,7 @@ async fn main() {
 
 async fn websocket_handler(
     Extension(server): Extension<ServerHandle<Server>>,
-    ezsocket: EzSocketUpgrade,
+    ezsocket: Upgrade,
 ) -> impl IntoResponse {
     ezsocket.on_upgrade(|socket, address| async move {
         server.accept(socket, address).await;
