@@ -1,15 +1,17 @@
 mod client;
 mod server;
 mod session;
+mod socket;
 mod websocket;
 
 #[cfg(feature = "axum")]
 pub mod axum;
 
-pub use websocket::CloseCode;
-pub use websocket::CloseFrame;
-pub use websocket::Message;
-pub use websocket::WebSocket;
+pub use socket::RawMessage;
+pub use socket::Message;
+pub use socket::WebSocket;
+pub use socket::CloseCode;
+pub use socket::CloseFrame;
 
 pub use client::connect;
 pub use client::ClientConfig;

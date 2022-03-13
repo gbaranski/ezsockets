@@ -7,3 +7,5 @@
 #### Should the Server itself contain `HashMap<SessionID, SessionHandle>`?
 
 #### Should there be actor for handling `WebSocketStream`?
+
+#### Measure latency with ping/pong messages

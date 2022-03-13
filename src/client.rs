@@ -1,4 +1,4 @@
-use crate::websocket::RawMessage;
+use crate::RawMessage;
 use crate::BoxError;
 use crate::CloseFrame;
 use crate::Message;

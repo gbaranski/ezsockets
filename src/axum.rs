@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use crate::websocket::RawMessage;
+use crate::RawMessage;
 use crate::WebSocket;
 use async_trait::async_trait;
 use axum_crate::extract::{ws, ConnectInfo};
