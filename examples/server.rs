@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use ezsockets::BoxError;
-use ezsockets::ServerHandle;
+use ezsockets::Server;
 use ezsockets::SessionHandle;
 use ezsockets::Socket;
 use std::collections::HashMap;
@@ -17,13 +17,13 @@ enum Message {
     },
 }
 
-struct Server {
+struct ChatServer {
     sessions: HashMap<u8, SessionHandle>,
-    handle: ServerHandle<Server>,
+    handle: Server<ChatServer>,
 }
 
 #[async_trait]
-impl ezsockets::Server for Server {
+impl ezsockets::ServerExt for ChatServer {
     type Message = Message;
     type Session = Session;
 
@@ -68,7 +68,7 @@ impl ezsockets::Server for Server {
 
 struct Session {
     id: SessionID,
-    server: ServerHandle<Server>,
+    server: Server<ChatServer>,
 }
 
 #[async_trait]
@@ -96,13 +96,10 @@ impl ezsockets::Session for Session {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let (handle, _) = ezsockets::run(
-        |handle| Server {
-            sessions: HashMap::new(),
-            handle,
-        },
-        "127.0.0.1:8080",
-    )
+    let (handle, _) = Server::create(|handle| ChatServer {
+        sessions: HashMap::new(),
+        handle,
+    })
     .await;
     let stdin = std::io::stdin();
     let lines = stdin.lock().lines();

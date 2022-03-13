@@ -2,10 +2,12 @@ mod client;
 mod server;
 mod session;
 mod socket;
-mod websocket;
 
 #[cfg(feature = "axum")]
 pub mod axum;
+
+#[cfg(feature = "tungstenite")]
+pub mod tungstenite;
 
 pub use socket::RawMessage;
 pub use socket::Message;
@@ -18,9 +20,8 @@ pub use client::ClientConfig;
 pub use client::Client;
 pub use client::ClientHandle;
 
-pub use server::run;
+pub use server::ServerExt;
 pub use server::Server;
-pub use server::ServerHandle;
 
 pub use session::Session;
 pub use session::SessionHandle;

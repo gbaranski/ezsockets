@@ -1,9 +1,8 @@
 use crate::BoxError;
-use futures::{SinkExt,  StreamExt, TryStreamExt};
+use futures::{SinkExt, StreamExt, TryStreamExt};
 use std::marker::PhantomData;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite;
-
 
 #[derive(Debug, Clone)]
 pub enum CloseCode {
@@ -65,16 +64,54 @@ pub enum CloseCode {
     /// to a different IP (when multiple targets exist), or reconnect to the same IP
     /// when a user has performed an action.
     Again,
-    #[doc(hidden)]
-    Tls,
-    #[doc(hidden)]
-    Reserved(u16),
-    #[doc(hidden)]
-    Iana(u16),
-    #[doc(hidden)]
-    Library(u16),
-    #[doc(hidden)]
-    Bad(u16),
+}
+
+impl From<CloseCode> for u16 {
+    fn from(code: CloseCode) -> u16 {
+        use self::CloseCode::*;
+        match code {
+            Normal => 1000,
+            Away => 1001,
+            Protocol => 1002,
+            Unsupported => 1003,
+            Status => 1005,
+            Abnormal => 1006,
+            Invalid => 1007,
+            Policy => 1008,
+            Size => 1009,
+            Extension => 1010,
+            Error => 1011,
+            Restart => 1012,
+            Again => 1013,
+        }
+    }
+}
+
+impl TryFrom<u16> for CloseCode {
+    type Error = u16;
+
+    fn try_from(code: u16) -> Result<Self, u16> {
+        use self::CloseCode::*;
+
+        Ok(match code {
+            1000 => Normal,
+            1001 => Away,
+            1002 => Protocol,
+            1003 => Unsupported,
+            1005 => Status,
+            1006 => Abnormal,
+            1007 => Invalid,
+            1008 => Policy,
+            1009 => Size,
+            1010 => Extension,
+            1011 => Error,
+            1012 => Restart,
+            1013 => Again,
+            code => {
+                return Err(code);
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -118,8 +155,6 @@ impl From<Message> for RawMessage {
         }
     }
 }
-
-
 
 #[derive(Debug)]
 struct SinkActor<M, S>

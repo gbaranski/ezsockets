@@ -1,14 +1,15 @@
 use std::net::SocketAddr;
 
+use crate::CloseCode;
+use crate::CloseFrame;
 use crate::RawMessage;
 use crate::Socket;
 use async_trait::async_trait;
-use axum_crate::extract::{ws, ConnectInfo};
 use axum_crate::extract::ws::rejection::*;
+use axum_crate::extract::{ws, ConnectInfo};
 use axum_crate::extract::{FromRequest, RequestParts};
 use axum_crate::response::Response;
 use futures::Future;
-use tokio_tungstenite::tungstenite;
 
 /// Extractor for establishing WebSocket connections.
 ///
@@ -44,50 +45,35 @@ where
     }
 }
 
-fn into_tungstenite(message: ws::Message) -> tungstenite::Message {
-    match message {
-        ws::Message::Text(text) => tungstenite::Message::Text(text),
-        ws::Message::Binary(binary) => tungstenite::Message::Binary(binary),
-        ws::Message::Ping(ping) => tungstenite::Message::Ping(ping),
-        ws::Message::Pong(pong) => tungstenite::Message::Pong(pong),
-        ws::Message::Close(Some(close)) => {
-            tungstenite::Message::Close(Some(tungstenite::protocol::CloseFrame {
-                code: tungstenite::protocol::frame::coding::CloseCode::from(close.code),
-                reason: close.reason,
-            }))
-        }
-        ws::Message::Close(None) => tungstenite::Message::Close(None),
-    }
-}
-
-fn from_tungstenite(message: tungstenite::Message) -> Option<ws::Message> {
-    match message {
-        tungstenite::Message::Text(text) => Some(ws::Message::Text(text)),
-        tungstenite::Message::Binary(binary) => Some(ws::Message::Binary(binary)),
-        tungstenite::Message::Ping(ping) => Some(ws::Message::Ping(ping)),
-        tungstenite::Message::Pong(pong) => Some(ws::Message::Pong(pong)),
-        tungstenite::Message::Close(Some(close)) => {
-            Some(ws::Message::Close(Some(ws::CloseFrame {
-                code: close.code.into(),
-                reason: close.reason,
-            })))
-        }
-        tungstenite::Message::Close(None) => Some(ws::Message::Close(None)),
-        // we can ignore `Frame` frames as recommended by the tungstenite maintainers
-        // https://github.com/snapview/tungstenite-rs/issues/268
-        tungstenite::Message::Frame(_) => None,
-    }
-}
-
 impl From<ws::Message> for RawMessage {
     fn from(message: ws::Message) -> Self {
-        Self::from(into_tungstenite(message))
+        match message {
+            ws::Message::Text(text) => RawMessage::Text(text),
+            ws::Message::Binary(binary) => RawMessage::Binary(binary),
+            ws::Message::Ping(ping) => RawMessage::Ping(ping),
+            ws::Message::Pong(pong) => RawMessage::Pong(pong),
+            ws::Message::Close(Some(close)) => RawMessage::Close(Some(CloseFrame {
+                code: CloseCode::try_from(close.code).unwrap(),
+                reason: close.reason.into(),
+            })),
+            ws::Message::Close(None) => RawMessage::Close(None),
+        }
     }
 }
 
 impl From<RawMessage> for ws::Message {
     fn from(message: RawMessage) -> Self {
-        Self::from(from_tungstenite(message.into()).unwrap())
+        match message {
+            RawMessage::Text(text) => ws::Message::Text(text),
+            RawMessage::Binary(binary) => ws::Message::Binary(binary),
+            RawMessage::Ping(ping) => ws::Message::Ping(ping),
+            RawMessage::Pong(pong) => ws::Message::Pong(pong),
+            RawMessage::Close(Some(close)) => ws::Message::Close(Some(ws::CloseFrame {
+                code: close.code.into(),
+                reason: close.reason.into(),
+            })),
+            RawMessage::Close(None) => ws::Message::Close(None),
+        }
     }
 }
 

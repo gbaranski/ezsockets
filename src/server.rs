@@ -5,48 +5,35 @@ use crate::Socket;
 use async_trait::async_trait;
 use futures::Future;
 use std::net::SocketAddr;
-use std::net::ToSocketAddrs;
 use tokio::sync::mpsc;
 
 #[derive(Debug)]
-enum ServerMessage<E: Server> {
-    Accept {
-        socket: Socket,
-        address: SocketAddr,
-    },
+enum ServerMessage<E: ServerExt> {
+    Accept { socket: Socket, address: SocketAddr },
     Message(E::Message),
 }
 
-struct ServerActor<E: Server> {
+struct ServerActor<E: ServerExt> {
     receiver: mpsc::UnboundedReceiver<ServerMessage<E>>,
     extension: E,
-    address: SocketAddr,
 }
 
-impl<E: Server> ServerActor<E>
+impl<E: ServerExt> ServerActor<E>
 where
     E: Send + 'static,
     <E::Session as Session>::ID: Send,
 {
     async fn run(&mut self) -> Result<(), BoxError> {
-        tracing::info!("starting server on {}", self.address);
-        let listener = tokio::net::TcpListener::bind(self.address).await?;
-        loop {
-            tokio::select! {
-                Ok((socket, address)) = listener.accept() => {
-                    let socket = tokio_tungstenite::accept_async(socket).await?;
-                    let socket = Socket::new(socket);
+        tracing::info!("starting server");
+        while let Some(message) = self.receiver.recv().await {
+            match message {
+                ServerMessage::Accept { socket, address } => {
                     self.accept(socket, address).await?;
                 }
-                Some(message) = self.receiver.recv() => {
-                    match message {
-                        ServerMessage::Accept { socket, address } => { self.accept(socket, address).await?; },
-                        ServerMessage::Message(message) => self.extension.message(message).await,
-                    };
-                }
-                else => break,
-            }
+                ServerMessage::Message(message) => self.extension.message(message).await,
+            };
         }
+
         Ok(())
     }
 
@@ -58,7 +45,7 @@ where
 }
 
 #[async_trait]
-pub trait Server: Send {
+pub trait ServerExt: Send {
     type Session: Session;
     type Message: Send;
 
@@ -72,12 +59,37 @@ pub trait Server: Send {
 }
 
 #[derive(Debug)]
-pub struct ServerHandle<E: Server> {
+pub struct Server<E: ServerExt> {
     sender: mpsc::UnboundedSender<ServerMessage<E>>,
 }
 
-impl<E: Server> ServerHandle<E>
+impl<E> Server<E>
 where
+    E: ServerExt + 'static,
+    E::Message: std::fmt::Debug,
+{
+    pub async fn create(
+        create: impl FnOnce(Self) -> E,
+    ) -> (Self, impl Future<Output = Result<(), BoxError>>) {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let handle = Server { sender };
+        let extension = create(handle.clone());
+        let mut actor = ServerActor {
+            receiver,
+            extension,
+        };
+        let future = tokio::spawn(async move {
+            actor.run().await?;
+            Ok::<_, BoxError>(())
+        });
+        let future = async move { future.await.unwrap() };
+        (handle, future)
+    }
+}
+
+impl<E> Server<E>
+where
+    E: ServerExt,
     E::Message: std::fmt::Debug,
 {
     pub async fn accept(&self, socket: Socket, address: SocketAddr) {
@@ -95,38 +107,10 @@ where
     }
 }
 
-impl<E: Server> std::clone::Clone for ServerHandle<E> {
+impl<E: ServerExt> std::clone::Clone for Server<E> {
     fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),
         }
     }
-}
-
-pub async fn run<E: Server>(
-    create: impl FnOnce(ServerHandle<E>) -> E,
-    address: impl ToSocketAddrs,
-) -> (ServerHandle<E>, impl Future<Output = Result<(), BoxError>>)
-where
-    E: Server + 'static,
-    E::Message: Send + 'static,
-    <E::Session as Session>::ID: Send + 'static,
-{
-    let (sender, receiver) = mpsc::unbounded_channel();
-    let handle = ServerHandle { sender };
-    let extension = create(handle.clone());
-    let address = address.to_socket_addrs().unwrap().next().unwrap();
-    let future = tokio::spawn({
-        async move {
-            let mut actor = ServerActor {
-                receiver,
-                address,
-                extension,
-            };
-            actor.run().await?;
-            Ok::<_, BoxError>(())
-        }
-    });
-    let future = async move { future.await.unwrap() };
-    (handle, future)
 }

@@ -1,27 +1,3 @@
-// Significant part of this code is licensed by the MIT License by tokio-tungstenite authors.
-// https://github.com/snapview/tokio-tungstenite
-
-// Copyright (c) 2017 Daniel Abramov
-// Copyright (c) 2017 Alexey Galakhov
-
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
 use crate::socket::RawMessage;
 use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
@@ -63,11 +39,6 @@ impl From<CloseCode> for TungsteniteCloseCode {
             CloseCode::Error => Self::Error,
             CloseCode::Restart => Self::Restart,
             CloseCode::Again => Self::Again,
-            CloseCode::Tls => Self::Tls,
-            CloseCode::Reserved(v) => Self::Reserved(v),
-            CloseCode::Iana(v) => Self::Iana(v),
-            CloseCode::Library(v) => Self::Library(v),
-            CloseCode::Bad(v) => Self::Bad(v),
         }
     }
 }
@@ -88,24 +59,7 @@ impl From<TungsteniteCloseCode> for CloseCode {
             TungsteniteCloseCode::Error => Self::Error,
             TungsteniteCloseCode::Restart => Self::Restart,
             TungsteniteCloseCode::Again => Self::Again,
-            TungsteniteCloseCode::Tls => Self::Tls,
-            TungsteniteCloseCode::Reserved(v) => Self::Reserved(v),
-            TungsteniteCloseCode::Iana(v) => Self::Iana(v),
-            TungsteniteCloseCode::Library(v) => Self::Library(v),
-            TungsteniteCloseCode::Bad(v) => Self::Bad(v),
-        }
-    }
-}
-
-impl From<tungstenite::Message> for RawMessage {
-    fn from(message: tungstenite::Message) -> Self {
-        match message {
-            tungstenite::Message::Text(text) => Self::Text(text),
-            tungstenite::Message::Binary(bytes) => Self::Binary(bytes),
-            tungstenite::Message::Ping(bytes) => Self::Ping(bytes),
-            tungstenite::Message::Pong(bytes) => Self::Pong(bytes),
-            tungstenite::Message::Close(frame) => Self::Close(frame.map(CloseFrame::from)),
-            tungstenite::Message::Frame(_) => unreachable!(),
+            code => unimplemented!("could not handle close code: {code:?}")
         }
     }
 }
@@ -118,6 +72,19 @@ impl From<RawMessage> for tungstenite::Message {
             RawMessage::Ping(bytes) => Self::Ping(bytes),
             RawMessage::Pong(bytes) => Self::Pong(bytes),
             RawMessage::Close(frame) => Self::Close(frame.map(CloseFrame::into)),
+        }
+    }
+}
+
+impl Into<RawMessage> for tungstenite::Message {
+    fn into(self) -> RawMessage {
+        match self {
+            tungstenite::Message::Text(text) => RawMessage::Text(text),
+            tungstenite::Message::Binary(bytes) => RawMessage::Binary(bytes),
+            tungstenite::Message::Ping(bytes) => RawMessage::Ping(bytes),
+            tungstenite::Message::Pong(bytes) => RawMessage::Pong(bytes),
+            tungstenite::Message::Close(frame) => RawMessage::Close(frame.map(CloseFrame::from)),
+            tungstenite::Message::Frame(_) => unreachable!(),
         }
     }
 }

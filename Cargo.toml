@@ -11,15 +11,15 @@ base64 = "0.13.0"
 futures = "0.3.21"
 http = "0.2.6"
 tokio = { version = "1.17.0", features = ["sync", "rt", "macros", "time"] }
-tokio-tungstenite = "0.17.1"
 tracing = "0.1.31"
 url = "2.2.2"
 
 axum_crate = { package = "axum", version = "0.4.8", features = ["ws"], optional = true }
-acu = "0.3.3"
+tokio-tungstenite = { version = "0.17.1", optional = true }
 
 [features]
-default = ["axum"] # TODO: Remove that
+default = ["axum", "tungstenite"] # TODO: Remove that
+tungstenite = ["tokio-tungstenite"]
 axum = ["axum_crate"]
 
 [dev-dependencies]

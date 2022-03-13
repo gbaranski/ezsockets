@@ -3,11 +3,11 @@ use axum_crate::extract::Extension;
 use axum_crate::response::IntoResponse;
 use axum_crate::routing::get;
 use axum_crate::Router;
-use ezsockets::Socket;
 use ezsockets::axum::Upgrade;
 use ezsockets::BoxError;
-use ezsockets::ServerHandle;
+use ezsockets::Server;
 use ezsockets::SessionHandle;
+use ezsockets::Socket;
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::net::SocketAddr;
@@ -21,17 +21,21 @@ enum Message {
     },
 }
 
-struct Server {
+struct ChatServer {
     sessions: HashMap<u8, SessionHandle>,
-    handle: ServerHandle<Server>,
+    handle: Server<ChatServer>,
 }
 
 #[async_trait]
-impl ezsockets::Server for Server {
+impl ezsockets::ServerExt for ChatServer {
     type Message = Message;
     type Session = Session;
 
-    async fn accept(&mut self, socket: Socket, _address: SocketAddr) -> Result<SessionHandle, BoxError> {
+    async fn accept(
+        &mut self,
+        socket: Socket,
+        _address: SocketAddr,
+    ) -> Result<SessionHandle, BoxError> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session {
             id,
@@ -49,7 +53,6 @@ impl ezsockets::Server for Server {
         assert!(self.sessions.remove(&id).is_some());
         Ok(())
     }
-
 
     async fn message(&mut self, message: Self::Message) {
         match message {
@@ -69,7 +72,7 @@ impl ezsockets::Server for Server {
 
 struct Session {
     id: SessionID,
-    server: ServerHandle<Server>,
+    server: Server<ChatServer>,
 }
 
 #[async_trait]
@@ -97,13 +100,10 @@ impl ezsockets::Session for Session {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let (server, _) = ezsockets::run(
-        |handle| Server {
-            sessions: HashMap::new(),
-            handle,
-        },
-        "127.0.0.1:8080",
-    )
+    let (server, _) = Server::create(|handle| ChatServer {
+        sessions: HashMap::new(),
+        handle,
+    })
     .await;
 
     let app = Router::new()
@@ -133,7 +133,7 @@ async fn main() {
 }
 
 async fn websocket_handler(
-    Extension(server): Extension<ServerHandle<Server>>,
+    Extension(server): Extension<Server<ChatServer>>,
     ezsocket: Upgrade,
 ) -> impl IntoResponse {
     ezsocket.on_upgrade(|socket, address| async move {
