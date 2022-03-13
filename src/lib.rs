@@ -9,7 +9,7 @@ pub mod axum;
 
 pub use socket::RawMessage;
 pub use socket::Message;
-pub use socket::WebSocket;
+pub use socket::Socket;
 pub use socket::CloseCode;
 pub use socket::CloseFrame;
 

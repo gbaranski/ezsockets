@@ -2,7 +2,7 @@ use crate::RawMessage;
 use crate::BoxError;
 use crate::CloseFrame;
 use crate::Message;
-use crate::WebSocket;
+use crate::Socket;
 use async_trait::async_trait;
 use std::future::Future;
 use std::time::Duration;
@@ -91,7 +91,7 @@ pub async fn connect<C: Client + 'static>(
         let http_request = config.connect_http_request();
         tracing::info!("connecting to {}...", config.url);
         let (stream, _) = tokio_tungstenite::connect_async(http_request).await?;
-        let socket = WebSocket::new(stream);
+        let socket = Socket::new(stream);
         tracing::info!("connected to {}", config.url);
         let mut actor = ClientActor {
             client,
@@ -123,7 +123,7 @@ pub async fn connect<C: Client + 'static>(
 struct ClientActor<C: Client> {
     client: C,
     receiver: mpsc::UnboundedReceiver<Message>,
-    socket: WebSocket,
+    socket: Socket,
     config: ClientConfig,
     heartbeat: Instant,
 }
@@ -184,7 +184,7 @@ impl<C: Client> ClientActor<C> {
             match result {
                 Ok((socket, _)) => {
                     tracing::error!("successfully reconnected");
-                    let socket = WebSocket::new(socket);
+                    let socket = Socket::new(socket);
                     self.socket = socket;
                     self.heartbeat = Instant::now();
                     return;

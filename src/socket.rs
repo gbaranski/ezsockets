@@ -1,5 +1,5 @@
 use crate::BoxError;
-use futures::{Sink, SinkExt, Stream, StreamExt, TryStreamExt};
+use futures::{SinkExt,  StreamExt, TryStreamExt};
 use std::marker::PhantomData;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite;
@@ -122,20 +122,20 @@ impl From<Message> for RawMessage {
 
 
 #[derive(Debug)]
-struct WebSocketSinkActor<M, S>
+struct SinkActor<M, S>
 where
     M: From<RawMessage>,
-    S: Sink<M, Error = BoxError> + Unpin,
+    S: SinkExt<M, Error = BoxError> + Unpin,
 {
     receiver: mpsc::UnboundedReceiver<RawMessage>,
     sink: S,
     phantom: PhantomData<M>,
 }
 
-impl<M, S> WebSocketSinkActor<M, S>
+impl<M, S> SinkActor<M, S>
 where
     M: From<RawMessage>,
-    S: Sink<M, Error = BoxError> + Unpin,
+    S: SinkExt<M, Error = BoxError> + Unpin,
 {
     async fn run(&mut self) -> Result<(), BoxError> {
         while let Some(message) = self.receiver.recv().await {
@@ -147,18 +147,18 @@ where
 }
 
 #[derive(Debug)]
-pub struct WebSocketSink {
+pub struct Sink {
     sender: mpsc::UnboundedSender<RawMessage>,
 }
 
-impl WebSocketSink {
+impl Sink {
     pub fn new<M, S>(sink: S) -> Self
     where
         M: From<RawMessage> + Send + 'static,
-        S: Sink<M, Error = BoxError> + Unpin + Send + 'static,
+        S: SinkExt<M, Error = BoxError> + Unpin + Send + 'static,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
-        let mut actor = WebSocketSinkActor {
+        let mut actor = SinkActor {
             receiver,
             sink,
             phantom: Default::default(),
@@ -173,19 +173,19 @@ impl WebSocketSink {
 }
 
 #[derive(Debug)]
-struct WebSocketStreamActor<M, S>
+struct StreamActor<M, S>
 where
     M: Into<RawMessage>,
-    S: Stream<Item = Result<M, BoxError>> + Unpin,
+    S: StreamExt<Item = Result<M, BoxError>> + Unpin,
 {
     sender: mpsc::UnboundedSender<RawMessage>,
     stream: S,
 }
 
-impl<M, S> WebSocketStreamActor<M, S>
+impl<M, S> StreamActor<M, S>
 where
     M: Into<RawMessage> + std::fmt::Debug,
-    S: Stream<Item = Result<M, BoxError>> + Unpin,
+    S: StreamExt<Item = Result<M, BoxError>> + Unpin,
 {
     async fn run(&mut self) -> Result<(), BoxError> {
         while let Some(message) = self.stream.next().await.transpose()? {
@@ -198,19 +198,19 @@ where
 }
 
 #[derive(Debug)]
-pub struct WebSocketStream {
+pub struct Stream {
     pub future: tokio::task::JoinHandle<Result<(), BoxError>>,
     receiver: mpsc::UnboundedReceiver<RawMessage>,
 }
 
-impl WebSocketStream {
+impl Stream {
     pub fn new<M, S>(stream: S) -> Self
     where
         M: Into<RawMessage> + std::fmt::Debug + Send + 'static,
-        S: Stream<Item = Result<M, BoxError>> + Unpin + Send + 'static,
+        S: StreamExt<Item = Result<M, BoxError>> + Unpin + Send + 'static,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
-        let mut actor = WebSocketStreamActor { sender, stream };
+        let mut actor = StreamActor { sender, stream };
         let future = tokio::spawn(async move { actor.run().await });
         Self { future, receiver }
     }
@@ -221,20 +221,20 @@ impl WebSocketStream {
 }
 
 #[derive(Debug)]
-pub struct WebSocket {
-    pub sink: WebSocketSink,
-    pub stream: WebSocketStream,
+pub struct Socket {
+    pub sink: Sink,
+    pub stream: Stream,
 }
 
-impl WebSocket {
+impl Socket {
     pub fn new<M, E: std::error::Error, S>(socket: S) -> Self
     where
         M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,
         E: Into<BoxError>,
-        S: Sink<M, Error = E> + Unpin + Stream<Item = Result<M, E>> + Unpin + Send + 'static,
+        S: SinkExt<M, Error = E> + Unpin + StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
     {
         let (sink, stream) = socket.sink_err_into().err_into().split();
-        let (sink, stream) = (WebSocketSink::new(sink), WebSocketStream::new(stream));
+        let (sink, stream) = (Sink::new(sink), Stream::new(stream));
         Self { sink: sink, stream }
     }
 

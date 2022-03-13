@@ -2,7 +2,7 @@ use crate::RawMessage;
 use crate::BoxError;
 use crate::CloseFrame;
 use crate::Message;
-use crate::WebSocket;
+use crate::Socket;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
@@ -21,7 +21,7 @@ pub struct SessionHandle {
 }
 
 impl SessionHandle {
-    pub fn create<S: Session + 'static>(session: S, socket: WebSocket) -> Self {
+    pub fn create<S: Session + 'static>(session: S, socket: Socket) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
         let id = session.id().to_owned();
         let mut actor = SessionActor::new(session, id, receiver, socket);
@@ -43,7 +43,7 @@ pub(crate) struct SessionActor<E: Session> {
     pub extension: E,
     pub id: E::ID,
     receiver: mpsc::UnboundedReceiver<Message>,
-    socket: WebSocket,
+    socket: Socket,
 }
 
 impl<E: Session> SessionActor<E> {
@@ -51,7 +51,7 @@ impl<E: Session> SessionActor<E> {
         extension: E,
         id: E::ID,
         receiver: mpsc::UnboundedReceiver<Message>,
-        socket: WebSocket,
+        socket: Socket,
     ) -> Self {
         Self {
             extension,

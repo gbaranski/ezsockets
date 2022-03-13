@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use ezsockets::BoxError;
 use ezsockets::ServerHandle;
 use ezsockets::SessionHandle;
-use ezsockets::WebSocket;
+use ezsockets::Socket;
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::net::SocketAddr;
@@ -29,7 +29,7 @@ impl ezsockets::Server for Server {
 
     async fn accept(
         &mut self,
-        socket: WebSocket,
+        socket: Socket,
         _address: SocketAddr,
     ) -> Result<SessionHandle, BoxError> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);

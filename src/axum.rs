@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use crate::RawMessage;
-use crate::WebSocket;
+use crate::Socket;
 use async_trait::async_trait;
 use axum_crate::extract::{ws, ConnectInfo};
 use axum_crate::extract::ws::rejection::*;
@@ -100,11 +100,11 @@ impl EzSocketUpgrade {
     /// example.
     pub fn on_upgrade<F, Fut>(self, callback: F) -> Response
     where
-        F: FnOnce(WebSocket, SocketAddr) -> Fut + Send + 'static,
+        F: FnOnce(Socket, SocketAddr) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
         self.ws.on_upgrade(move |socket| async move {
-            let socket = WebSocket::new(socket);
+            let socket = Socket::new(socket);
             callback(socket, self.address).await;
         })
     }

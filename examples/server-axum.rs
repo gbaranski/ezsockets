@@ -3,7 +3,7 @@ use axum_crate::extract::Extension;
 use axum_crate::response::IntoResponse;
 use axum_crate::routing::get;
 use axum_crate::Router;
-use ezsockets::WebSocket;
+use ezsockets::Socket;
 use ezsockets::axum::EzSocketUpgrade;
 use ezsockets::BoxError;
 use ezsockets::ServerHandle;
@@ -31,7 +31,7 @@ impl ezsockets::Server for Server {
     type Message = Message;
     type Session = Session;
 
-    async fn accept(&mut self, socket: WebSocket, _address: SocketAddr) -> Result<SessionHandle, BoxError> {
+    async fn accept(&mut self, socket: Socket, _address: SocketAddr) -> Result<SessionHandle, BoxError> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session {
             id,

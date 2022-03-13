@@ -1,7 +1,7 @@
 use crate::BoxError;
 use crate::Session;
 use crate::SessionHandle;
-use crate::WebSocket;
+use crate::Socket;
 use async_trait::async_trait;
 use futures::Future;
 use std::net::SocketAddr;
@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 #[derive(Debug)]
 enum ServerMessage<E: Server> {
     Accept {
-        socket: WebSocket,
+        socket: Socket,
         address: SocketAddr,
     },
     Message(E::Message),
@@ -35,7 +35,7 @@ where
             tokio::select! {
                 Ok((socket, address)) = listener.accept() => {
                     let socket = tokio_tungstenite::accept_async(socket).await?;
-                    let socket = WebSocket::new(socket);
+                    let socket = Socket::new(socket);
                     self.accept(socket, address).await?;
                 }
                 Some(message) = self.receiver.recv() => {
@@ -50,7 +50,7 @@ where
         Ok(())
     }
 
-    async fn accept(&mut self, socket: WebSocket, address: SocketAddr) -> Result<(), BoxError> {
+    async fn accept(&mut self, socket: Socket, address: SocketAddr) -> Result<(), BoxError> {
         self.extension.accept(socket, address).await?;
         tracing::info!("connection from {address} accepted");
         Ok(())
@@ -64,7 +64,7 @@ pub trait Server: Send {
 
     async fn accept(
         &mut self,
-        socket: WebSocket,
+        socket: Socket,
         address: SocketAddr,
     ) -> Result<SessionHandle, BoxError>;
     async fn disconnected(&mut self, id: <Self::Session as Session>::ID) -> Result<(), BoxError>;
@@ -80,7 +80,7 @@ impl<E: Server> ServerHandle<E>
 where
     E::Message: std::fmt::Debug,
 {
-    pub async fn accept(&self, socket: WebSocket, address: SocketAddr) {
+    pub async fn accept(&self, socket: Socket, address: SocketAddr) {
         self.sender
             .send(ServerMessage::Accept { socket, address })
             .map_err(|_| ())
