@@ -1,8 +1,8 @@
-use crate::RawMessage;
 use crate::BoxError;
 use crate::CloseFrame;
 use crate::Message;
 use crate::Socket;
+use crate::socket::Config;
 use async_trait::async_trait;
 use std::future::Future;
 use std::time::Duration;
@@ -91,7 +91,7 @@ pub async fn connect<C: Client + 'static>(
         let http_request = config.connect_http_request();
         tracing::info!("connecting to {}...", config.url);
         let (stream, _) = tokio_tungstenite::connect_async(http_request).await?;
-        let socket = Socket::new(stream);
+        let socket = Socket::new(stream, Config::default());
         tracing::info!("connected to {}", config.url);
         let mut actor = ClientActor {
             client,
@@ -130,8 +130,6 @@ struct ClientActor<C: Client> {
 
 impl<C: Client> ClientActor<C> {
     async fn run(&mut self) -> Result<Option<CloseFrame>, BoxError> {
-        let mut ping_interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
-
         loop {
             tokio::select! {
                 Some(message) = self.receiver.recv() => {
@@ -142,15 +140,9 @@ impl<C: Client> ClientActor<C> {
                 }
                 Some(message) = self.socket.recv() => {
                     let response = match message.to_owned() {
-                        RawMessage::Text(text) => self.client.text(text).await?,
-                        RawMessage::Binary(bytes) => self.client.binary(bytes).await?,
-                        RawMessage::Ping(_) => None,
-                        RawMessage::Pong(_) => {
-                            // TODO: Maybe handle bytes?
-                            self.heartbeat = Instant::now();
-                            None
-                        }
-                        RawMessage::Close(_frame) => {
+                        Message::Text(text) => self.client.text(text).await?,
+                        Message::Binary(bytes) => self.client.binary(bytes).await?,
+                        Message::Close(_frame) => {
                             // TODO: pass close frame to closed()
                             self.client.closed().await?;
                             None
@@ -159,12 +151,9 @@ impl<C: Client> ClientActor<C> {
                     if let Some(message) = response.to_owned() {
                         self.socket.send(message.into()).await;
                     }
-                    if let RawMessage::Close(frame) = message {
+                    if let Message::Close(frame) = message {
                         return Ok(frame);
                     }
-                }
-                _ = ping_interval.tick() => {
-                    self.socket.send(RawMessage::Ping(vec![])).await;
                 }
                 else => break,
             }
@@ -184,7 +173,7 @@ impl<C: Client> ClientActor<C> {
             match result {
                 Ok((socket, _)) => {
                     tracing::error!("successfully reconnected");
-                    let socket = Socket::new(socket);
+                    let socket = Socket::new(socket, Config::default());
                     self.socket = socket;
                     self.heartbeat = Instant::now();
                     return;

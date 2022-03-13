@@ -1,8 +1,24 @@
 use crate::BoxError;
 use futures::{SinkExt, StreamExt, TryStreamExt};
-use std::marker::PhantomData;
+use std::{
+    marker::PhantomData,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite;
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub heartbeat: Duration,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            heartbeat: Duration::from_secs(5),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum CloseCode {
@@ -181,7 +197,7 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sink {
     sender: mpsc::UnboundedSender<RawMessage>,
 }
@@ -213,19 +229,33 @@ where
     M: Into<RawMessage>,
     S: StreamExt<Item = Result<M, BoxError>> + Unpin,
 {
-    sender: mpsc::UnboundedSender<RawMessage>,
+    sender: mpsc::UnboundedSender<Message>,
     stream: S,
 }
 
 impl<M, S> StreamActor<M, S>
 where
-    M: Into<RawMessage> + std::fmt::Debug,
+    M: Into<RawMessage>,
     S: StreamExt<Item = Result<M, BoxError>> + Unpin,
 {
     async fn run(&mut self) -> Result<(), BoxError> {
         while let Some(message) = self.stream.next().await.transpose()? {
-            let message = message.into();
+            let message: RawMessage = message.into();
             tracing::debug!("received message: {:?}", message);
+            let message = match message {
+                RawMessage::Text(text) => Message::Text(text),
+                RawMessage::Binary(bytes) => Message::Binary(bytes),
+                RawMessage::Ping(_bytes) => continue,
+                RawMessage::Pong(bytes) => {
+                    let bytes: [u8; 16] = bytes.try_into().unwrap(); // TODO: handle invalid byte frame
+                    let timestamp = u128::from_be_bytes(bytes);
+                    let timestamp = Duration::from_millis(timestamp as u64); // TODO: handle overflow
+                    let latency = SystemTime::now().duration_since(UNIX_EPOCH + timestamp).unwrap();
+                    tracing::debug!("latency: {}ms", latency.as_millis());
+                    continue;
+                },
+                RawMessage::Close(_) => todo!(),
+            };
             self.sender.send(message).unwrap();
         }
         Ok(())
@@ -235,7 +265,7 @@ where
 #[derive(Debug)]
 pub struct Stream {
     pub future: tokio::task::JoinHandle<Result<(), BoxError>>,
-    receiver: mpsc::UnboundedReceiver<RawMessage>,
+    receiver: mpsc::UnboundedReceiver<Message>,
 }
 
 impl Stream {
@@ -250,7 +280,7 @@ impl Stream {
         Self { future, receiver }
     }
 
-    pub async fn recv(&mut self) -> Option<RawMessage> {
+    pub async fn recv(&mut self) -> Option<Message> {
         self.receiver.recv().await
     }
 }
@@ -262,7 +292,7 @@ pub struct Socket {
 }
 
 impl Socket {
-    pub fn new<M, E: std::error::Error, S>(socket: S) -> Self
+    pub fn new<M, E: std::error::Error, S>(socket: S, config: Config) -> Self
     where
         M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,
         E: Into<BoxError>,
@@ -270,6 +300,22 @@ impl Socket {
     {
         let (sink, stream) = socket.sink_err_into().err_into().split();
         let (sink, stream) = (Sink::new(sink), Stream::new(stream));
+        tokio::spawn({
+            let sink = sink.clone();
+            async move {
+                let mut interval = tokio::time::interval(config.heartbeat);
+                loop {
+                    interval.tick().await;
+                    let timestamp = SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap();
+                    let timestamp = timestamp.as_millis();
+                    let bytes = timestamp.to_be_bytes();
+                    sink.send(RawMessage::Ping(bytes.to_vec())).await;
+                }
+            }
+        });
+
         Self { sink: sink, stream }
     }
 
@@ -277,7 +323,7 @@ impl Socket {
         self.sink.send(message).await;
     }
 
-    pub async fn recv(&mut self) -> Option<RawMessage> {
+    pub async fn recv(&mut self) -> Option<Message> {
         self.stream.recv().await
     }
 }

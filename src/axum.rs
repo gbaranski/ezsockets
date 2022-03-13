@@ -90,7 +90,7 @@ impl Upgrade {
         Fut: Future<Output = ()> + Send + 'static,
     {
         self.ws.on_upgrade(move |socket| async move {
-            let socket = Socket::new(socket);
+            let socket = Socket::new(socket, Default::default()); // TODO: Make it really configurable via Extensions
             callback(socket, self.address).await;
         })
     }

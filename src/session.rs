@@ -1,4 +1,3 @@
-use crate::RawMessage;
 use crate::BoxError;
 use crate::CloseFrame;
 use crate::Message;
@@ -62,7 +61,6 @@ impl<E: Session> SessionActor<E> {
     }
 
     pub(crate) async fn run(&mut self) {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
         let id = self.id.to_owned();
         let result: Result<_, BoxError> = async move {
             loop {
@@ -75,17 +73,9 @@ impl<E: Session> SessionActor<E> {
                     }
                     Some(message) = self.socket.recv() => {
                         let message = match message {
-                            RawMessage::Text(text) => self.extension.text(text).await?,
-                            RawMessage::Binary(bytes) => self.extension.binary(bytes).await?,
-                            RawMessage::Ping(_) => {
-                                None
-                            },
-                            RawMessage::Pong(_bytes) => {
-                                // TODO: Maybe handle bytes?
-                                // self.heartbeat = Instant::now();
-                                None
-                            },
-                            RawMessage::Close(frame) => {
+                            Message::Text(text) => self.extension.text(text).await?,
+                            Message::Binary(bytes) => self.extension.binary(bytes).await?,
+                            Message::Close(frame) => {
                                 return Ok(frame.map(CloseFrame::from))
                             },
 
@@ -93,9 +83,6 @@ impl<E: Session> SessionActor<E> {
                         if let Some(message) = message {
                             self.socket.send(message.into()).await;
                         }
-                    }
-                    _ = interval.tick() => {
-                        self.socket.send(RawMessage::Ping(vec![])).await;
                     }
                     else => break,
                 }
