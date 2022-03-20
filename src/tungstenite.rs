@@ -3,7 +3,7 @@ use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
 use crate::CloseCode;
 use crate::CloseFrame;
-
+use crate::Message;
 
 impl<'t> From<tungstenite::protocol::CloseFrame<'t>> for CloseFrame {
     fn from(frame: tungstenite::protocol::CloseFrame) -> Self {
@@ -85,6 +85,16 @@ impl Into<RawMessage> for tungstenite::Message {
             tungstenite::Message::Pong(bytes) => RawMessage::Pong(bytes),
             tungstenite::Message::Close(frame) => RawMessage::Close(frame.map(CloseFrame::from)),
             tungstenite::Message::Frame(_) => unreachable!(),
+        }
+    }
+}
+
+impl From<Message> for tungstenite::Message {
+    fn from(message: Message) -> Self {
+        match message {
+            Message::Text(text) => tungstenite::Message::Text(text),
+            Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
+            Message::Close(frame) => tungstenite::Message::Close(frame.map(CloseFrame::into)),
         }
     }
 }

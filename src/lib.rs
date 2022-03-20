@@ -1,29 +1,39 @@
-mod client;
-mod server;
-mod session;
 mod socket;
 
-#[cfg(feature = "axum")]
-pub mod axum;
-
-#[cfg(feature = "tungstenite")]
-pub mod tungstenite;
-
-pub use socket::RawMessage;
-pub use socket::Message;
-pub use socket::Socket;
 pub use socket::CloseCode;
 pub use socket::CloseFrame;
+pub use socket::Message;
+pub use socket::RawMessage;
+pub use socket::Socket;
 
-pub use client::connect;
-pub use client::ClientConfig;
-pub use client::Client;
-pub use client::ClientHandle;
+#[cfg(feature = "server-axum")]
+pub mod axum;
 
-pub use server::ServerExt;
-pub use server::Server;
+#[cfg(feature = "tokio-tungstenite")]
+pub mod tungstenite;
 
-pub use session::Session;
-pub use session::SessionHandle;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "client")] {
+        mod client;
+
+        pub use client::connect;
+        pub use client::ClientConfig;
+        pub use client::Client;
+        pub use client::ClientHandle;
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "server")] {
+        mod server;
+        mod session;
+
+        pub use server::ServerExt;
+        pub use server::Server;
+
+        pub use session::Session;
+        pub use session::SessionHandle;
+    }
+}
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;

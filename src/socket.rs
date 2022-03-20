@@ -5,7 +5,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::mpsc;
-use tokio_tungstenite::tungstenite;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -141,16 +140,6 @@ pub enum Message {
     Text(String),
     Binary(Vec<u8>),
     Close(Option<CloseFrame>),
-}
-
-impl From<Message> for tungstenite::Message {
-    fn from(message: Message) -> Self {
-        match message {
-            Message::Text(text) => tungstenite::Message::Text(text),
-            Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
-            Message::Close(frame) => tungstenite::Message::Close(frame.map(CloseFrame::into)),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
