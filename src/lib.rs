@@ -5,6 +5,8 @@ pub use socket::CloseFrame;
 pub use socket::Message;
 pub use socket::RawMessage;
 pub use socket::Socket;
+pub use socket::Stream;
+pub use socket::Sink;
 
 #[cfg(feature = "server-axum")]
 pub mod axum;
@@ -18,8 +20,8 @@ cfg_if::cfg_if! {
 
         pub use client::connect;
         pub use client::ClientConfig;
+        pub use client::ClientExt;
         pub use client::Client;
-        pub use client::ClientHandle;
     }
 }
 

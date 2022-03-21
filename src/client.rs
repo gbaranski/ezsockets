@@ -59,34 +59,60 @@ impl ClientConfig {
     }
 }
 
+#[derive(Debug)]
+enum ClientMessage<M: std::fmt::Debug> {
+    Socket(Message),
+    Call(M),
+}
+
 #[async_trait]
-pub trait Client: Send {
-    async fn text(&mut self, text: String) -> Result<Option<Message>, BoxError>;
-    async fn binary(&mut self, bytes: Vec<u8>) -> Result<Option<Message>, BoxError>;
+pub trait ClientExt: Send {
+    type Message: std::fmt::Debug + Send;
+
+    async fn text(&mut self, text: String) -> Result<(), BoxError>;
+    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), BoxError>;
     async fn closed(&mut self) -> Result<(), BoxError>;
+    async fn call(&mut self, message: Self::Message);
 }
 
-#[derive(Debug, Clone)]
-pub struct ClientHandle {
-    sender: mpsc::UnboundedSender<Message>,
+#[derive(Debug)]
+pub struct Client<M: std::fmt::Debug> {
+    sender: mpsc::UnboundedSender<ClientMessage<M>>,
 }
 
-impl ClientHandle {
+impl<M: std::fmt::Debug> Clone for Client<M> {
+    fn clone(&self) -> Self {
+        Self {
+            sender: self.sender.clone(),
+        }
+    }
+}
+
+impl<M: std::fmt::Debug> Client<M> {
     pub async fn text(&self, text: String) {
-        self.sender.send(Message::Text(text)).unwrap();
+        self.sender
+            .send(ClientMessage::Socket(Message::Text(text)))
+            .unwrap();
     }
 
     pub async fn binary(&self, text: String) {
-        self.sender.send(Message::Text(text)).unwrap();
+        self.sender
+            .send(ClientMessage::Socket(Message::Text(text)))
+            .unwrap();
+    }
+
+    pub async fn call(&self, message: M) {
+        self.sender.send(ClientMessage::Call(message)).unwrap();
     }
 }
 
-pub async fn connect<C: Client + 'static>(
-    client: C,
+pub async fn connect<E: ClientExt + 'static>(
+    client_fn: impl FnOnce(Client<E::Message>) -> E,
     config: ClientConfig,
-) -> (ClientHandle, impl Future<Output = Result<(), BoxError>>) {
+) -> (Client<E::Message>, impl Future<Output = Result<(), BoxError>>) {
     let (sender, receiver) = mpsc::unbounded_channel();
-    let handle = ClientHandle { sender };
+    let handle = Client { sender };
+    let client = client_fn(handle.clone());
     let future = tokio::spawn(async move {
         let http_request = config.connect_http_request();
         tracing::info!("connecting to {}...", config.url);
@@ -120,37 +146,37 @@ pub async fn connect<C: Client + 'static>(
     (handle, future)
 }
 
-struct ClientActor<C: Client> {
-    client: C,
-    receiver: mpsc::UnboundedReceiver<Message>,
+struct ClientActor<E: ClientExt> {
+    client: E,
+    receiver: mpsc::UnboundedReceiver<ClientMessage<E::Message>>,
     socket: Socket,
     config: ClientConfig,
     heartbeat: Instant,
 }
 
-impl<C: Client> ClientActor<C> {
+impl<E: ClientExt> ClientActor<E> {
     async fn run(&mut self) -> Result<Option<CloseFrame>, BoxError> {
         loop {
             tokio::select! {
                 Some(message) = self.receiver.recv() => {
-                    self.socket.send(message.clone().into()).await;
-                    if let Message::Close(frame) = message {
-                       return Ok(frame)
+                    match message {
+                        ClientMessage::Socket(message) => {
+                            self.socket.send(message.clone().into()).await;
+                            if let Message::Close(frame) = message {
+                                return Ok(frame)
+                            }
+                        }
+                        ClientMessage::Call(message) => {
+                            self.client.call(message).await;
+                        }
                     }
                 }
                 Some(message) = self.socket.recv() => {
-                    let response = match message.to_owned() {
+                    match message.to_owned() {
                         Message::Text(text) => self.client.text(text).await?,
                         Message::Binary(bytes) => self.client.binary(bytes).await?,
-                        Message::Close(_frame) => {
-                            // TODO: pass close frame to closed()
-                            self.client.closed().await?;
-                            None
-                        }
+                        Message::Close(_frame) => self.client.closed().await?
                     };
-                    if let Some(message) = response.to_owned() {
-                        self.socket.send(message.into()).await;
-                    }
                     if let Message::Close(frame) = message {
                         return Ok(frame);
                     }

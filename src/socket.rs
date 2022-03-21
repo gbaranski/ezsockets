@@ -207,7 +207,11 @@ impl Sink {
         Self { sender }
     }
 
-    pub async fn send(&self, message: RawMessage) {
+    pub async fn send(&self, message: Message) {
+        self.sender.send(message.into()).unwrap();
+    }
+
+    pub(crate) async fn send_raw(&self, message: RawMessage) {
         self.sender.send(message).unwrap();
     }
 }
@@ -302,7 +306,7 @@ impl Socket {
                         .unwrap();
                     let timestamp = timestamp.as_millis();
                     let bytes = timestamp.to_be_bytes();
-                    sink.send(RawMessage::Ping(bytes.to_vec())).await;
+                    sink.send_raw(RawMessage::Ping(bytes.to_vec())).await;
                 }
             }
         });
@@ -310,8 +314,12 @@ impl Socket {
         Self { sink: sink, stream }
     }
 
-    pub async fn send(&self, message: RawMessage) {
+    pub async fn send(&self, message: Message) {
         self.sink.send(message).await;
+    }
+
+    pub async fn send_raw(&self, message: RawMessage) {
+        self.sink.send_raw(message).await;
     }
 
     pub async fn recv(&mut self) -> Option<Message> {

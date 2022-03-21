@@ -8,13 +8,13 @@ use std::net::SocketAddr;
 use tokio::sync::mpsc;
 
 #[derive(Debug)]
-enum ServerMessage<E: ServerExt> {
+enum ServerMessage<M> {
     Accept { socket: Socket, address: SocketAddr },
-    Message(E::Message),
+    Message(M),
 }
 
 struct ServerActor<E: ServerExt> {
-    receiver: mpsc::UnboundedReceiver<ServerMessage<E>>,
+    receiver: mpsc::UnboundedReceiver<ServerMessage<E::Message>>,
     extension: E,
 }
 
@@ -60,7 +60,7 @@ pub trait ServerExt: Send {
 
 #[derive(Debug)]
 pub struct Server<E: ServerExt> {
-    sender: mpsc::UnboundedSender<ServerMessage<E>>,
+    sender: mpsc::UnboundedSender<ServerMessage<E::Message>>,
 }
 
 impl<E> Server<E>

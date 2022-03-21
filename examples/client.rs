@@ -4,32 +4,42 @@ use ezsockets::ClientConfig;
 use std::io::BufRead;
 use url::Url;
 
-struct Client {}
+struct Client {
+    #[allow(dead_code)]
+    client: ezsockets::Client<<Self as ezsockets::ClientExt>::Message>,
+}
 
 #[async_trait]
-impl ezsockets::Client for Client {
-    async fn text(&mut self, text: String) -> Result<Option<ezsockets::Message>, BoxError> {
+impl ezsockets::ClientExt for Client {
+    type Message = ();
+
+    async fn text(&mut self, text: String) -> Result<(), BoxError> {
         tracing::info!("received message: {text}");
-        Ok(None)
+        Ok(())
     }
 
-    async fn binary(&mut self, bytes: Vec<u8>) -> Result<Option<ezsockets::Message>, BoxError> {
+    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), BoxError> {
         tracing::info!("received bytes: {bytes:?}");
-        Ok(None)
+        Ok(())
     }
 
     async fn closed(&mut self) -> Result<(), BoxError> {
         Ok(())
+    }
+
+    async fn call(&mut self, message: Self::Message) {
+        match message {
+            () => {}
+        }
     }
 }
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let client = Client {};
     let url = Url::parse("ws://localhost:3000/websocket").unwrap();
     let config = ClientConfig::new(url).basic("username", "password");
-    let (handle, future) = ezsockets::connect(client, config).await;
+    let (handle, future) = ezsockets::connect(|client| Client { client }, config).await;
     tokio::spawn(async move {
         future.await.unwrap();
     });

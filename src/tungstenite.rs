@@ -1,14 +1,7 @@
-use crate::socket;
 use crate::socket::RawMessage;
-use crate::BoxError;
 use crate::CloseCode;
 use crate::CloseFrame;
 use crate::Message;
-use crate::Server;
-use crate::ServerExt;
-use crate::Socket;
-use tokio::net::TcpListener;
-use tokio::net::ToSocketAddrs;
 use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
 
@@ -106,15 +99,28 @@ impl From<Message> for tungstenite::Message {
     }
 }
 
-pub async fn run<E: ServerExt, A: ToSocketAddrs>(
-    server: Server<E>,
-    address: A,
-) -> Result<(), BoxError> {
-    let listener = TcpListener::bind(address).await?;
-    loop {
-        let (socket, address) = listener.accept().await?;
-        let socket = tokio_tungstenite::accept_async(socket).await?;
-        let socket = Socket::new(socket, socket::Config::default());
-        server.accept(socket, address).await;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "server")] {
+        use crate::Server;
+        use crate::ServerExt;
+        use crate::BoxError;
+        use crate::Socket;
+        use crate::socket;
+
+        use tokio::net::TcpListener;
+        use tokio::net::ToSocketAddrs;
+
+        pub async fn run<E: ServerExt, A: ToSocketAddrs>(
+            server: Server<E>,
+            address: A,
+        ) -> Result<(), BoxError> {
+            let listener = TcpListener::bind(address).await?;
+            loop {
+                let (socket, address) = listener.accept().await?;
+                let socket = tokio_tungstenite::accept_async(socket).await?;
+                let socket = Socket::new(socket, socket::Config::default());
+                server.accept(socket, address).await;
+            }
+        }
     }
 }
