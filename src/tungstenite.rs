@@ -1,16 +1,16 @@
+use crate::socket;
+use crate::socket::RawMessage;
 use crate::BoxError;
+use crate::CloseCode;
+use crate::CloseFrame;
+use crate::Message;
 use crate::Server;
 use crate::ServerExt;
 use crate::Socket;
-use crate::socket;
-use crate::socket::RawMessage;
 use tokio::net::TcpListener;
 use tokio::net::ToSocketAddrs;
 use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
-use crate::CloseCode;
-use crate::CloseFrame;
-use crate::Message;
 
 impl<'t> From<tungstenite::protocol::CloseFrame<'t>> for CloseFrame {
     fn from(frame: tungstenite::protocol::CloseFrame) -> Self {
@@ -66,7 +66,7 @@ impl From<TungsteniteCloseCode> for CloseCode {
             TungsteniteCloseCode::Error => Self::Error,
             TungsteniteCloseCode::Restart => Self::Restart,
             TungsteniteCloseCode::Again => Self::Again,
-            code => unimplemented!("could not handle close code: {code:?}")
+            code => unimplemented!("could not handle close code: {code:?}"),
         }
     }
 }
@@ -106,7 +106,10 @@ impl From<Message> for tungstenite::Message {
     }
 }
 
-pub async fn run<E: ServerExt, A: ToSocketAddrs>(server: Server<E>, address: A) -> Result<(), BoxError> {
+pub async fn run<E: ServerExt, A: ToSocketAddrs>(
+    server: Server<E>,
+    address: A,
+) -> Result<(), BoxError> {
     let listener = TcpListener::bind(address).await?;
     loop {
         let (socket, address) = listener.accept().await?;

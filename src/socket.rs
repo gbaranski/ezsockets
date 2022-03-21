@@ -239,10 +239,12 @@ where
                     let bytes: [u8; 16] = bytes.try_into().unwrap(); // TODO: handle invalid byte frame
                     let timestamp = u128::from_be_bytes(bytes);
                     let timestamp = Duration::from_millis(timestamp as u64); // TODO: handle overflow
-                    let latency = SystemTime::now().duration_since(UNIX_EPOCH + timestamp).unwrap();
+                    let latency = SystemTime::now()
+                        .duration_since(UNIX_EPOCH + timestamp)
+                        .unwrap();
                     tracing::debug!("latency: {}ms", latency.as_millis());
                     continue;
-                },
+                }
                 RawMessage::Close(_) => todo!(),
             };
             self.sender.send(message).unwrap();

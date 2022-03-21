@@ -1,8 +1,8 @@
+use crate::socket::Config;
 use crate::BoxError;
 use crate::CloseFrame;
 use crate::Message;
 use crate::Socket;
-use crate::socket::Config;
 use async_trait::async_trait;
 use std::future::Future;
 use std::time::Duration;

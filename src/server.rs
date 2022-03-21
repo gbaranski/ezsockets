@@ -90,7 +90,6 @@ where
 impl<E> Server<E>
 where
     E: ServerExt,
-    E::Message: std::fmt::Debug,
 {
     pub async fn accept(&self, socket: Socket, address: SocketAddr) {
         self.sender

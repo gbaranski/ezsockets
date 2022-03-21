@@ -104,7 +104,9 @@ async fn main() {
     tokio::spawn({
         let server = server.clone();
         async move {
-            ezsockets::tungstenite::run(server, "127.0.0.1:8080").await.unwrap();
+            ezsockets::tungstenite::run(server, "127.0.0.1:8080")
+                .await
+                .unwrap();
         }
     });
 
