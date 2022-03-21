@@ -5,10 +5,12 @@ use crate::CloseFrame;
 use crate::RawMessage;
 use crate::Socket;
 use async_trait::async_trait;
-use axum_crate::extract::ws::rejection::*;
-use axum_crate::extract::{ws, ConnectInfo};
-use axum_crate::extract::{FromRequest, RequestParts};
-use axum_crate::response::Response;
+use axum::extract::ws;
+use axum::extract::ws::rejection::*;
+use axum::extract::ConnectInfo;
+use axum::extract::FromRequest;
+use axum::extract::RequestParts;
+use axum::response::Response;
 use futures::Future;
 
 /// Extractor for establishing WebSocket connections.
@@ -36,7 +38,7 @@ where
             .extensions()
             .unwrap()
             .get::<ConnectInfo<SocketAddr>>()
-            .unwrap()
+            .expect("Axum Server must be created with `axum::Router::into_make_service_with_connect_info::<SocketAddr, _>()`")
             .to_owned();
         Ok(Self {
             ws: ws::WebSocketUpgrade::from_request(req).await?,

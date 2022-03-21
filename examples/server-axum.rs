@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use axum_crate::extract::Extension;
-use axum_crate::response::IntoResponse;
-use axum_crate::routing::get;
-use axum_crate::Router;
+use axum::extract::Extension;
+use axum::response::IntoResponse;
+use axum::routing::get;
+use axum::Router;
 use ezsockets::axum::Upgrade;
 use ezsockets::BoxError;
 use ezsockets::Server;
@@ -111,9 +111,10 @@ async fn main() {
         .layer(Extension(server.clone()));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+
     tokio::spawn(async move {
         tracing::debug!("listening on {}", addr);
-        axum_crate::Server::bind(&addr)
+        axum::Server::bind(&addr)
             .serve(app.into_make_service_with_connect_info::<SocketAddr, _>())
             .await
             .unwrap();
