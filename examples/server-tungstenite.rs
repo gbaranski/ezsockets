@@ -96,16 +96,23 @@ impl ezsockets::Session for Session {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let (handle, _) = Server::create(|handle| ChatServer {
+    let (server, _) = Server::create(|handle| ChatServer {
         sessions: HashMap::new(),
         handle,
     })
     .await;
+    tokio::spawn({
+        let server = server.clone();
+        async move {
+            ezsockets::tungstenite::run(server, "127.0.0.1:8080").await.unwrap();
+        }
+    });
+
     let stdin = std::io::stdin();
     let lines = stdin.lock().lines();
     for line in lines {
         let line = line.unwrap();
-        handle
+        server
             .call(Message::Broadcast {
                 text: line,
                 exceptions: vec![],

@@ -1,4 +1,11 @@
+use crate::BoxError;
+use crate::Server;
+use crate::ServerExt;
+use crate::Socket;
+use crate::socket;
 use crate::socket::RawMessage;
+use tokio::net::TcpListener;
+use tokio::net::ToSocketAddrs;
 use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
 use crate::CloseCode;
@@ -96,5 +103,15 @@ impl From<Message> for tungstenite::Message {
             Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
             Message::Close(frame) => tungstenite::Message::Close(frame.map(CloseFrame::into)),
         }
+    }
+}
+
+pub async fn run<E: ServerExt, A: ToSocketAddrs>(server: Server<E>, address: A) -> Result<(), BoxError> {
+    let listener = TcpListener::bind(address).await?;
+    loop {
+        let (socket, address) = listener.accept().await?;
+        let socket = tokio_tungstenite::accept_async(socket).await?;
+        let socket = Socket::new(socket, socket::Config::default());
+        server.accept(socket, address).await;
     }
 }
