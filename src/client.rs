@@ -76,7 +76,7 @@ pub trait ClientExt: Send {
 }
 
 #[derive(Debug)]
-pub struct Client<M: std::fmt::Debug> {
+pub struct Client<M: std::fmt::Debug = ()> {
     sender: mpsc::UnboundedSender<ClientMessage<M>>,
 }
 
