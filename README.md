@@ -7,6 +7,8 @@ Have you ever had troubles building a WebSocket server or a client in Rust? This
 
 ## Client
 
+#### NOTE: Enable `client` feature to use it.
+
 Simplest client that redirects stdin to the WebSocket server can be represented by the following code:
 
 ```rust
@@ -66,6 +68,8 @@ async fn main() {
 
 
 ## Server
+
+#### NOTE: Enable `server-<backend>` feature to use it.
 
 To create a simple echo server, you'll need to first define a `Session` struct
 Simplest echo server can be represented by the following code:
