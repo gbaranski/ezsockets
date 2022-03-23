@@ -12,7 +12,7 @@ struct EchoServer {}
 #[async_trait]
 impl ezsockets::ServerExt for EchoServer {
     type Message = ();
-    type Session = SessionActor;
+    type Session = EchoSession;
 
     async fn accept(
         &mut self,
@@ -20,7 +20,7 @@ impl ezsockets::ServerExt for EchoServer {
         address: SocketAddr,
     ) -> Result<Session, BoxError> {
         let handle = Session::create(
-            |handle| SessionActor {
+            |handle| EchoSession {
                 id: address.port(),
                 handle,
             },
@@ -43,13 +43,13 @@ impl ezsockets::ServerExt for EchoServer {
     }
 }
 
-struct SessionActor {
+struct EchoSession {
     handle: Session,
     id: SessionID,
 }
 
 #[async_trait]
-impl ezsockets::SessionExt for SessionActor {
+impl ezsockets::SessionExt for EchoSession {
     type ID = SessionID;
 
     fn id(&self) -> &Self::ID {
