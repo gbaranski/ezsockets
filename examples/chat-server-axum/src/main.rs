@@ -110,11 +110,11 @@ async fn main() {
         .route("/websocket", get(websocket_handler))
         .layer(Extension(server.clone()));
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let address = SocketAddr::from(([127, 0, 0, 1], 8080));
 
     tokio::spawn(async move {
-        tracing::debug!("listening on {}", addr);
-        axum::Server::bind(&addr)
+        tracing::debug!("listening on {}", address);
+        axum::Server::bind(&address)
             .serve(app.into_make_service_with_connect_info::<SocketAddr, _>())
             .await
             .unwrap();
