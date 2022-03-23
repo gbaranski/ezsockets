@@ -19,8 +19,13 @@ impl ezsockets::ServerExt for EchoServer {
         socket: Socket,
         address: SocketAddr,
     ) -> Result<SessionHandle, BoxError> {
-        let session = Session { id: address.port() };
-        let handle = SessionHandle::create(session, socket);
+        let handle = SessionHandle::create(
+            |handle| Session {
+                id: address.port(),
+                handle,
+            },
+            socket,
+        );
         Ok(handle)
     }
 
@@ -39,6 +44,7 @@ impl ezsockets::ServerExt for EchoServer {
 }
 
 struct Session {
+    handle: SessionHandle,
     id: SessionID,
 }
 
@@ -49,11 +55,12 @@ impl ezsockets::SessionExt for Session {
     fn id(&self) -> &Self::ID {
         &self.id
     }
-    async fn text(&mut self, text: String) -> Result<Option<ezsockets::Message>, BoxError> {
-        Ok(Some(ezsockets::Message::Text(text)))
+    async fn text(&mut self, text: String) -> Result<(), BoxError> {
+        self.handle.text(text).await;
+        Ok(())
     }
 
-    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<Option<ezsockets::Message>, BoxError> {
+    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), BoxError> {
         unimplemented!()
     }
 }

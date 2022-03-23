@@ -10,8 +10,8 @@ pub trait SessionExt: Send {
     type ID: Send + Sync + Clone + std::fmt::Debug + std::fmt::Display;
 
     fn id(&self) -> &Self::ID;
-    async fn text(&mut self, text: String) -> Result<Option<Message>, BoxError>;
-    async fn binary(&mut self, bytes: Vec<u8>) -> Result<Option<Message>, BoxError>;
+    async fn text(&mut self, text: String) -> Result<(), BoxError>;
+    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), BoxError>;
 }
 
 #[derive(Debug, Clone)]
@@ -20,21 +20,28 @@ pub struct SessionHandle {
 }
 
 impl SessionHandle {
-    pub fn create<S: SessionExt + 'static>(session: S, socket: Socket) -> Self {
+    pub fn create<S: SessionExt + 'static>(
+        session_fn: impl FnOnce(SessionHandle) -> S,
+        socket: Socket,
+    ) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
+        let handle = Self { sender };
+        let session = session_fn(handle.clone());
         let id = session.id().to_owned();
         let mut actor = SessionActor::new(session, id, receiver, socket);
         tokio::spawn(async move { actor.run().await });
 
-        Self { sender }
+        handle
     }
 
+    /// Sends a Text message to the server
     pub async fn text(&self, text: String) {
         self.sender.send(Message::Text(text)).unwrap();
     }
 
-    pub async fn binary(&self, text: String) {
-        self.sender.send(Message::Text(text)).unwrap();
+    /// Sends a Binary message to the server
+    pub async fn binary(&self, bytes: Vec<u8>) {
+        self.sender.send(Message::Binary(bytes)).unwrap();
     }
 }
 
@@ -72,7 +79,7 @@ impl<E: SessionExt> SessionActor<E> {
                         }
                     }
                     Some(message) = self.socket.recv() => {
-                        let message = match message {
+                        match message {
                             Message::Text(text) => self.extension.text(text).await?,
                             Message::Binary(bytes) => self.extension.binary(bytes).await?,
                             Message::Close(frame) => {
@@ -80,9 +87,6 @@ impl<E: SessionExt> SessionActor<E> {
                             },
 
                         };
-                        if let Some(message) = message {
-                            self.socket.send(message.into()).await;
-                        }
                     }
                     else => break,
                 }

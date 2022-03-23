@@ -33,11 +33,13 @@ impl ezsockets::ServerExt for ChatServer {
         _address: SocketAddr,
     ) -> Result<SessionHandle, BoxError> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
-        let session = Session {
-            id,
-            server: self.handle.clone(),
-        };
-        let handle = SessionHandle::create(session, socket);
+        let handle = SessionHandle::create(
+            |_handle| Session {
+                id,
+                server: self.handle.clone(),
+            },
+            socket,
+        );
         self.sessions.insert(id, handle.clone());
         Ok(handle)
     }
@@ -78,17 +80,18 @@ impl ezsockets::SessionExt for Session {
     fn id(&self) -> &Self::ID {
         &self.id
     }
-    async fn text(&mut self, text: String) -> Result<Option<ezsockets::Message>, BoxError> {
+
+    async fn text(&mut self, text: String) -> Result<(), BoxError> {
         self.server
             .call(Message::Broadcast {
                 exceptions: vec![self.id],
                 text,
             })
             .await;
-        Ok(None)
+        Ok(())
     }
 
-    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<Option<ezsockets::Message>, BoxError> {
+    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), BoxError> {
         unimplemented!()
     }
 }
