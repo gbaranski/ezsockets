@@ -1,15 +1,15 @@
 # ezsockets
 
-Have you ever had troubles building a WebSocket server or a client in Rust? This crate might come very handy.
+Have you ever struggle with creating a WebSocket server or a client in Rust? This crate is for you.
 
-- High level abstraction of WebSocket, handling Ping/Pong from both Client and Server
-- Use of traits to allow declarative and event-based programming
+- High level abstraction of WebSocket, handling Ping/Pong from both Client and Server.
+- Use of traits to allow declarative and event-based programming.
 
 ## Client
 
 #### NOTE: Enable `client` feature to use it.
 
-Simplest client that redirects stdin to the WebSocket server can be represented by the following code:
+The code below represents simple client that redirects stdin to the WebSocket server.
 
 ```rust
 use async_trait::async_trait;
@@ -71,8 +71,8 @@ async fn main() {
 
 #### NOTE: Enable `server-<backend>` feature to use it.
 
-To create a simple echo server, you'll need to first define a `Session` struct
-Simplest echo server can be represented by the following code:
+To create a simple echo server, you'll need to define a `Session` struct.
+The code below represents a simple echo server.
 
 ```rust
 use async_trait::async_trait;
@@ -105,7 +105,7 @@ impl ezsockets::SessionExt for EchoSession {
 }
 ```
 
-After that, we'll also need a `Server` struct
+Then, we need to define a `Server` struct
 
 
 ```rust
@@ -154,12 +154,11 @@ impl ezsockets::ServerExt for EchoServer {
 }
 ```
 
-
-And that's it! We got that, now we need to start the server somehow, take a look at available [Server back-ends](#server-back-ends), for simplest usage, I'd recommend [tokio-tungstenite](#tokio-tungstenite)
+That's all! Now we can start the server. Take a look at the available [Server back-ends](#server-back-ends). For a simple usage, I'd recommend [tokio-tungstenite](#tokio-tungstenite).
 
 ## Server back-ends
 
-- [x] [`tokio-tungstenite`](#tokio-tungstenite), a Tokio based WebSocket implementation, althought it's not possible to use fancy features, like routing or authentication, because it does not use T
+- [x] [`tokio-tungstenite`](#tokio-tungstenite), a neat Tokio based WebSocket implementation. However, it does not provide fancy features like routing or authentication.
 - [x] [`axum`](#axum), an ergonomic and modular web framework built with Tokio, Tower, and Hyper.
 - [ ] [`actix-web`](#actix-web) a powerful, pragmatic, and extremely fast web framework for Rust.
 
