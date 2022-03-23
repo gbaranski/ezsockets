@@ -31,14 +31,5 @@ thiserror = "1.0.30"
 tokio = { version = "1.17.0", features = ["full"] }
 tracing-subscriber = "0.3.9"
 
-[[example]]
-name = "client"
-required-features = ["client"]
-
-[[example]]
-name = "server-axum"
-required-features = ["server-axum"]
-
-[[example]]
-name = "server-tungstenite"
-required-features = ["server-tungstenite"]
+[workspace]
+members = ["examples/chat-client", "examples/echo-server", "examples/chat-server"]

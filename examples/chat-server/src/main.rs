@@ -18,7 +18,7 @@ enum Message {
 }
 
 struct ChatServer {
-    sessions: HashMap<u8, SessionHandle>,
+    sessions: HashMap<SessionID, SessionHandle>,
     handle: Server<ChatServer>,
 }
 
