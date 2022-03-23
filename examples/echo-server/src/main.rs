@@ -3,14 +3,11 @@ use ezsockets::BoxError;
 use ezsockets::Server;
 use ezsockets::SessionHandle;
 use ezsockets::Socket;
-use std::collections::HashMap;
 use std::net::SocketAddr;
 
-type SessionID = u8;
+type SessionID = u16;
 
-struct EchoServer {
-    sessions: HashMap<SessionID, SessionHandle>,
-}
+struct EchoServer {}
 
 #[async_trait]
 impl ezsockets::ServerExt for EchoServer {
@@ -20,22 +17,17 @@ impl ezsockets::ServerExt for EchoServer {
     async fn accept(
         &mut self,
         socket: Socket,
-        _address: SocketAddr,
+        address: SocketAddr,
     ) -> Result<SessionHandle, BoxError> {
-        let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
-        let session = Session {
-            id,
-        };
+        let session = Session { id: address.port() };
         let handle = SessionHandle::create(session, socket);
-        self.sessions.insert(id, handle.clone());
         Ok(handle)
     }
 
     async fn disconnected(
         &mut self,
-        id: <Self::Session as ezsockets::Session>::ID,
+        _id: <Self::Session as ezsockets::SessionExt>::ID,
     ) -> Result<(), BoxError> {
-        assert!(self.sessions.remove(&id).is_some());
         Ok(())
     }
 
@@ -51,7 +43,7 @@ struct Session {
 }
 
 #[async_trait]
-impl ezsockets::Session for Session {
+impl ezsockets::SessionExt for Session {
     type ID = SessionID;
 
     fn id(&self) -> &Self::ID {
@@ -69,10 +61,7 @@ impl ezsockets::Session for Session {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let (server, _) = Server::create(|_server| EchoServer {
-        sessions: HashMap::new(),
-    })
-    .await;
+    let (server, _) = Server::create(|_server| EchoServer {}).await;
     ezsockets::tungstenite::run(server, "127.0.0.1:8080")
         .await
         .unwrap();

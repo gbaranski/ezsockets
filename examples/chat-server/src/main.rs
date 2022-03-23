@@ -44,7 +44,7 @@ impl ezsockets::ServerExt for ChatServer {
 
     async fn disconnected(
         &mut self,
-        id: <Self::Session as ezsockets::Session>::ID,
+        id: <Self::Session as ezsockets::SessionExt>::ID,
     ) -> Result<(), BoxError> {
         assert!(self.sessions.remove(&id).is_some());
         Ok(())
@@ -72,7 +72,7 @@ struct Session {
 }
 
 #[async_trait]
-impl ezsockets::Session for Session {
+impl ezsockets::SessionExt for Session {
     type ID = SessionID;
 
     fn id(&self) -> &Self::ID {

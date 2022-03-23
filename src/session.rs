@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 #[async_trait]
-pub trait Session: Send {
+pub trait SessionExt: Send {
     type ID: Send + Sync + Clone + std::fmt::Debug + std::fmt::Display;
 
     fn id(&self) -> &Self::ID;
@@ -20,7 +20,7 @@ pub struct SessionHandle {
 }
 
 impl SessionHandle {
-    pub fn create<S: Session + 'static>(session: S, socket: Socket) -> Self {
+    pub fn create<S: SessionExt + 'static>(session: S, socket: Socket) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
         let id = session.id().to_owned();
         let mut actor = SessionActor::new(session, id, receiver, socket);
@@ -38,14 +38,14 @@ impl SessionHandle {
     }
 }
 
-pub(crate) struct SessionActor<E: Session> {
+pub(crate) struct SessionActor<E: SessionExt> {
     pub extension: E,
     pub id: E::ID,
     receiver: mpsc::UnboundedReceiver<Message>,
     socket: Socket,
 }
 
-impl<E: Session> SessionActor<E> {
+impl<E: SessionExt> SessionActor<E> {
     pub(crate) fn new(
         extension: E,
         id: E::ID,

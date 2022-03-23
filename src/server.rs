@@ -1,5 +1,5 @@
 use crate::BoxError;
-use crate::Session;
+use crate::SessionExt;
 use crate::SessionHandle;
 use crate::Socket;
 use async_trait::async_trait;
@@ -21,7 +21,7 @@ struct ServerActor<E: ServerExt> {
 impl<E: ServerExt> ServerActor<E>
 where
     E: Send + 'static,
-    <E::Session as Session>::ID: Send,
+    <E::Session as SessionExt>::ID: Send,
 {
     async fn run(&mut self) -> Result<(), BoxError> {
         tracing::info!("starting server");
@@ -46,7 +46,7 @@ where
 
 #[async_trait]
 pub trait ServerExt: Send {
-    type Session: Session;
+    type Session: SessionExt;
     type Message: Send;
 
     async fn accept(
@@ -54,7 +54,7 @@ pub trait ServerExt: Send {
         socket: Socket,
         address: SocketAddr,
     ) -> Result<SessionHandle, BoxError>;
-    async fn disconnected(&mut self, id: <Self::Session as Session>::ID) -> Result<(), BoxError>;
+    async fn disconnected(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), BoxError>;
     async fn message(&mut self, message: Self::Message);
 }
 
