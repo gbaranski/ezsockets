@@ -34,7 +34,7 @@ cfg_if::cfg_if! {
         pub use server::Server;
 
         pub use session::SessionExt;
-        pub use session::SessionHandle;
+        pub use session::Session;
     }
 }
 

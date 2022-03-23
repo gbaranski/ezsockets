@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use ezsockets::BoxError;
 use ezsockets::Server;
-use ezsockets::SessionHandle;
+use ezsockets::Session;
 use ezsockets::Socket;
 use std::collections::HashMap;
 use std::io::BufRead;
@@ -18,23 +18,23 @@ enum Message {
 }
 
 struct ChatServer {
-    sessions: HashMap<SessionID, SessionHandle>,
+    sessions: HashMap<SessionID, Session>,
     handle: Server<ChatServer>,
 }
 
 #[async_trait]
 impl ezsockets::ServerExt for ChatServer {
     type Message = Message;
-    type Session = Session;
+    type Session = SessionActor;
 
     async fn accept(
         &mut self,
         socket: Socket,
         _address: SocketAddr,
-    ) -> Result<SessionHandle, BoxError> {
+    ) -> Result<Session, BoxError> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
-        let handle = SessionHandle::create(
-            |_handle| Session {
+        let handle = Session::create(
+            |_handle| SessionActor {
                 id,
                 server: self.handle.clone(),
             },
@@ -68,13 +68,13 @@ impl ezsockets::ServerExt for ChatServer {
     }
 }
 
-struct Session {
+struct SessionActor {
     id: SessionID,
     server: Server<ChatServer>,
 }
 
 #[async_trait]
-impl ezsockets::SessionExt for Session {
+impl ezsockets::SessionExt for SessionActor {
     type ID = SessionID;
 
     fn id(&self) -> &Self::ID {

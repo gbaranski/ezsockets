@@ -1,6 +1,6 @@
 use crate::BoxError;
 use crate::SessionExt;
-use crate::SessionHandle;
+use crate::Session;
 use crate::Socket;
 use async_trait::async_trait;
 use futures::Future;
@@ -53,7 +53,7 @@ pub trait ServerExt: Send {
         &mut self,
         socket: Socket,
         address: SocketAddr,
-    ) -> Result<SessionHandle, BoxError>;
+    ) -> Result<Session, BoxError>;
     async fn disconnected(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), BoxError>;
     async fn message(&mut self, message: Self::Message);
 }

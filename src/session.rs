@@ -15,13 +15,13 @@ pub trait SessionExt: Send {
 }
 
 #[derive(Debug, Clone)]
-pub struct SessionHandle {
+pub struct Session {
     sender: mpsc::UnboundedSender<Message>,
 }
 
-impl SessionHandle {
+impl Session {
     pub fn create<S: SessionExt + 'static>(
-        session_fn: impl FnOnce(SessionHandle) -> S,
+        session_fn: impl FnOnce(Session) -> S,
         socket: Socket,
     ) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
