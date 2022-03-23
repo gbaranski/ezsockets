@@ -32,4 +32,4 @@ tokio = { version = "1.17.0", features = ["full"] }
 tracing-subscriber = "0.3.9"
 
 [workspace]
-members = ["examples/chat-client", "examples/echo-server", "examples/chat-server"]
+members = ["examples/chat-client", "examples/simple-client", "examples/echo-server", "examples/chat-server"]
