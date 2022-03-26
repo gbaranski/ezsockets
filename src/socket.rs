@@ -253,7 +253,7 @@ where
                     tracing::debug!("latency: {}ms", latency.as_millis());
                     continue;
                 }
-                RawMessage::Close(_) => todo!(),
+                RawMessage::Close(_) => return Ok(()),
             };
             self.sender.send(message).unwrap();
         }
@@ -304,7 +304,7 @@ impl Socket {
             async move {
                 let mut interval = tokio::time::interval(config.heartbeat);
                 interval.tick().await;
-                while !sink.is_closed()  {
+                while !sink.is_closed() {
                     let timestamp = SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap();
