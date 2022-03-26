@@ -207,6 +207,10 @@ impl Sink {
         Self { sender }
     }
 
+    pub fn is_closed(&self) -> bool {
+        self.sender.is_closed()
+    }
+
     pub async fn send(&self, message: Message) {
         self.sender.send(message.into()).unwrap();
     }
@@ -299,15 +303,17 @@ impl Socket {
             let sink = sink.clone();
             async move {
                 let mut interval = tokio::time::interval(config.heartbeat);
-                loop {
-                    interval.tick().await;
+                interval.tick().await;
+                while !sink.is_closed()  {
                     let timestamp = SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap();
                     let timestamp = timestamp.as_millis();
                     let bytes = timestamp.to_be_bytes();
                     sink.send_raw(RawMessage::Ping(bytes.to_vec())).await;
+                    interval.tick().await;
                 }
+                tracing::debug!("sink closed, stopped sending ping's");
             }
         });
 
