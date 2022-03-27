@@ -78,14 +78,16 @@ impl<E: SessionExt> SessionActor<E> {
                             return Ok(frame)
                         }
                     }
-                    Some(message) = self.socket.recv() => {
+                    message = self.socket.recv() => {
                         match message {
-                            Message::Text(text) => self.extension.text(text).await?,
-                            Message::Binary(bytes) => self.extension.binary(bytes).await?,
-                            Message::Close(frame) => {
-                                return Ok(frame.map(CloseFrame::from))
-                            },
-
+                            Some(message) => match message {
+                                Message::Text(text) => self.extension.text(text).await?,
+                                Message::Binary(bytes) => self.extension.binary(bytes).await?,
+                                Message::Close(frame) => {
+                                    return Ok(frame.map(CloseFrame::from))
+                                },
+                            }
+                            None => break
                         };
                     }
                     else => break,
