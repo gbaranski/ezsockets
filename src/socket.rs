@@ -1,20 +1,25 @@
 use crate::BoxError;
 use futures::{SinkExt, StreamExt, TryStreamExt};
+use std::sync::Arc;
+use std::time::Instant;
 use std::{
     marker::PhantomData,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub heartbeat: Duration,
+    pub timeout: Duration,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             heartbeat: Duration::from_secs(5),
+            timeout: Duration::from_secs(10),
         }
     }
 }
@@ -192,7 +197,7 @@ pub struct Sink {
 }
 
 impl Sink {
-    pub fn new<M, S>(sink: S) -> Self
+    pub fn new<M, S>(sink: S) -> (tokio::task::JoinHandle<Result<(), BoxError>>, Self)
     where
         M: From<RawMessage> + Send + 'static,
         S: SinkExt<M, Error = BoxError> + Unpin + Send + 'static,
@@ -203,8 +208,8 @@ impl Sink {
             sink,
             phantom: Default::default(),
         };
-        tokio::spawn(async move { actor.run().await });
-        Self { sender }
+        let future = tokio::spawn(async move { actor.run().await });
+        (future, Self { sender })
     }
 
     pub fn is_closed(&self) -> bool {
@@ -228,6 +233,7 @@ where
 {
     sender: mpsc::UnboundedSender<Message>,
     stream: S,
+    last_alive: Arc<Mutex<Instant>>,
 }
 
 impl<M, S> StreamActor<M, S>
@@ -244,6 +250,7 @@ where
                 RawMessage::Binary(bytes) => Message::Binary(bytes),
                 RawMessage::Ping(_bytes) => continue,
                 RawMessage::Pong(bytes) => {
+                    *self.last_alive.lock().await = Instant::now();
                     let bytes: [u8; 16] = bytes.try_into().unwrap(); // TODO: handle invalid byte frame
                     let timestamp = u128::from_be_bytes(bytes);
                     let timestamp = Duration::from_millis(timestamp as u64); // TODO: handle overflow
@@ -263,20 +270,26 @@ where
 
 #[derive(Debug)]
 pub struct Stream {
-    pub future: tokio::task::JoinHandle<Result<(), BoxError>>,
     receiver: mpsc::UnboundedReceiver<Message>,
 }
 
 impl Stream {
-    pub fn new<M, S>(stream: S) -> Self
+    pub fn new<M, S>(
+        stream: S,
+        last_alive: Arc<Mutex<Instant>>,
+    ) -> (tokio::task::JoinHandle<Result<(), BoxError>>, Self)
     where
         M: Into<RawMessage> + std::fmt::Debug + Send + 'static,
         S: StreamExt<Item = Result<M, BoxError>> + Unpin + Send + 'static,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
-        let mut actor = StreamActor { sender, stream };
+        let mut actor = StreamActor {
+            sender,
+            stream,
+            last_alive,
+        };
         let future = tokio::spawn(async move { actor.run().await });
-        Self { future, receiver }
+        (future, Self { receiver })
     }
 
     pub async fn recv(&mut self) -> Option<Message> {
@@ -297,27 +310,48 @@ impl Socket {
         E: Into<BoxError>,
         S: SinkExt<M, Error = E> + Unpin + StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
     {
+        let last_alive = Instant::now();
+        let last_alive = Arc::new(Mutex::new(last_alive));
         let (sink, stream) = socket.sink_err_into().err_into().split();
-        let (sink, stream) = (Sink::new(sink), Stream::new(stream));
-        tokio::spawn({
+        let ((sink_future, sink), (stream_future, stream)) =
+            (Sink::new(sink), Stream::new(stream, last_alive.clone()));
+        let heartbeat_future = tokio::spawn({
             let sink = sink.clone();
             async move {
                 let mut interval = tokio::time::interval(config.heartbeat);
-                interval.tick().await;
-                while !sink.is_closed() {
+
+                loop {
+                    interval.tick().await;
+                    if last_alive.lock().await.elapsed() > config.timeout {
+                        tracing::info!("closing connection due to timeout");
+                        sink.send_raw(RawMessage::Close(Some(CloseFrame {
+                            code: CloseCode::Normal,
+                            reason: String::from("client didn't respond to Ping frame"),
+                        })))
+                        .await;
+                        return;
+                    }
                     let timestamp = SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap();
                     let timestamp = timestamp.as_millis();
                     let bytes = timestamp.to_be_bytes();
                     sink.send_raw(RawMessage::Ping(bytes.to_vec())).await;
-                    interval.tick().await;
                 }
-                tracing::debug!("sink closed, stopped sending ping's");
             }
         });
 
-        Self { sink: sink, stream }
+        tokio::spawn(async move {
+            let result = stream_future.await.unwrap();
+            sink_future.abort();
+            heartbeat_future.abort();
+            match result {
+                Ok(_) => tracing::info!("connection closed"),
+                Err(error) => tracing::info!("connection failed with error: {error}"),
+            }
+        });
+
+        Self { sink, stream }
     }
 
     pub async fn send(&self, message: Message) {
