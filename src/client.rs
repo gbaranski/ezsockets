@@ -32,7 +32,7 @@ impl ClientConfig {
         let credentials = base64::encode(format!("{username}:{password}"));
         self.headers.insert(
             http::header::AUTHORIZATION,
-            http::HeaderValue::from_str(&credentials).unwrap(),
+            http::HeaderValue::from_str(&format!("Basic {credentials}")).unwrap(),
         );
         self
     }
