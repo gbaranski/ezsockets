@@ -52,7 +52,7 @@ impl ezsockets::ServerExt for ChatServer {
         Ok(())
     }
 
-    async fn message(&mut self, message: Self::Message) {
+    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError> {
         match message {
             Message::Broadcast { exceptions, text } => {
                 let sessions = self
@@ -65,6 +65,7 @@ impl ezsockets::ServerExt for ChatServer {
                 }
             }
         };
+        Ok(())
     }
 }
 

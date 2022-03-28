@@ -23,10 +23,11 @@ impl ezsockets::ClientExt for Client {
         Ok(())
     }
 
-    async fn call(&mut self, message: Self::Message) {
+    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError> {
         match message {
             () => {}
         }
+        Ok(())
     }
 }
 

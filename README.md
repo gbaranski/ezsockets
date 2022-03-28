@@ -34,14 +34,11 @@ impl ezsockets::ClientExt for Client {
         Ok(())
     }
 
-    async fn closed(&mut self) -> Result<(), BoxError> {
-        Ok(())
-    }
-
-    async fn call(&mut self, message: Self::Message) {
+    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError> {
         match message {
             () => {}
         }
+        Ok(())
     }
 }
 
@@ -146,10 +143,11 @@ impl ezsockets::ServerExt for EchoServer {
         Ok(())
     }
 
-    async fn message(&mut self, message: Self::Message) {
+    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError> {
         match message {
             () => {}
         };
+        Ok(())
     }
 }
 ```

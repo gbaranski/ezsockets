@@ -70,7 +70,7 @@ pub trait ClientExt: Send {
 
     async fn text(&mut self, text: String) -> Result<(), BoxError>;
     async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), BoxError>;
-    async fn call(&mut self, message: Self::Message);
+    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError>;
 }
 
 #[derive(Debug)]
@@ -152,7 +152,7 @@ impl<E: ClientExt> ClientActor<E> {
                             }
                         }
                         ClientMessage::Call(message) => {
-                            self.client.call(message).await;
+                            self.client.message(message).await?;
                         }
                     }
                 }

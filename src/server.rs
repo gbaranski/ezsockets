@@ -30,7 +30,7 @@ where
                 ServerMessage::Accept { socket, address } => {
                     self.accept(socket, address).await?;
                 }
-                ServerMessage::Message(message) => self.extension.message(message).await,
+                ServerMessage::Message(message) => self.extension.message(message).await?,
             };
         }
 
@@ -55,7 +55,7 @@ pub trait ServerExt: Send {
         address: SocketAddr,
     ) -> Result<Session, BoxError>;
     async fn disconnected(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), BoxError>;
-    async fn message(&mut self, message: Self::Message);
+    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError>;
 }
 
 #[derive(Debug)]

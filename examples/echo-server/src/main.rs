@@ -36,10 +36,11 @@ impl ezsockets::ServerExt for EchoServer {
         Ok(())
     }
 
-    async fn message(&mut self, message: Self::Message) {
+    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError> {
         match message {
             () => {}
         };
+        Ok(())
     }
 }
 
