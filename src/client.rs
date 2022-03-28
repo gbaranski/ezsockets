@@ -82,6 +82,12 @@ impl<P: std::fmt::Debug> Clone for Client<P> {
     }
 }
 
+impl<P: std::fmt::Debug> Into<mpsc::UnboundedSender<P>> for Client<P> {
+    fn into(self) -> mpsc::UnboundedSender<P> {
+        self.calls
+    }
+}
+
 impl<P: std::fmt::Debug> Client<P> {
     pub async fn text(&self, text: String) {
         self.socket.send(Message::Text(text)).unwrap();
