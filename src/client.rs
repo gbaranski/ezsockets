@@ -82,9 +82,9 @@ impl<P: std::fmt::Debug> Clone for Client<P> {
     }
 }
 
-impl<P: std::fmt::Debug> Into<mpsc::UnboundedSender<P>> for Client<P> {
-    fn into(self) -> mpsc::UnboundedSender<P> {
-        self.calls
+impl<P: std::fmt::Debug> From<Client<P>> for mpsc::UnboundedSender<P> {
+    fn from(client: Client<P>) -> Self {
+        client.calls
     }
 }
 
