@@ -58,69 +58,65 @@ impl ClientConfig {
     }
 }
 
-#[derive(Debug)]
-enum ClientMessage<M: std::fmt::Debug> {
-    Socket(Message),
-    Call(M),
-}
-
 #[async_trait]
 pub trait ClientExt: Send {
-    type Message: std::fmt::Debug + Send;
+    type Params: std::fmt::Debug + Send;
 
     async fn text(&mut self, text: String) -> Result<(), BoxError>;
     async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), BoxError>;
-    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError>;
+    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError>;
 }
 
 #[derive(Debug)]
-pub struct Client<M: std::fmt::Debug = ()> {
-    sender: mpsc::UnboundedSender<ClientMessage<M>>,
+pub struct Client<P: std::fmt::Debug = ()> {
+    socket: mpsc::UnboundedSender<Message>,
+    calls: mpsc::UnboundedSender<P>,
 }
 
-impl<M: std::fmt::Debug> Clone for Client<M> {
+impl<P: std::fmt::Debug> Clone for Client<P> {
     fn clone(&self) -> Self {
         Self {
-            sender: self.sender.clone(),
+            socket: self.socket.clone(),
+            calls: self.calls.clone(),
         }
     }
 }
 
-impl<M: std::fmt::Debug> Client<M> {
+impl<P: std::fmt::Debug> Client<P> {
     pub async fn text(&self, text: String) {
-        self.sender
-            .send(ClientMessage::Socket(Message::Text(text)))
-            .unwrap();
+        self.socket.send(Message::Text(text)).unwrap();
     }
 
-    pub async fn binary(&self, text: String) {
-        self.sender
-            .send(ClientMessage::Socket(Message::Text(text)))
-            .unwrap();
+    pub async fn binary(&self, bytes: Vec<u8>) {
+        self.socket.send(Message::Binary(bytes)).unwrap();
     }
 
-    pub async fn call(&self, message: M) {
-        self.sender.send(ClientMessage::Call(message)).unwrap();
+    pub async fn call(&self, message: P) {
+        self.calls.send(message).unwrap();
     }
 }
 
 pub async fn connect<E: ClientExt + 'static>(
-    client_fn: impl FnOnce(Client<E::Message>) -> E,
+    client_fn: impl FnOnce(Client<E::Params>) -> E,
     config: ClientConfig,
-) -> (Client<E::Message>, impl Future<Output = Result<(), BoxError>>) {
-    let (sender, receiver) = mpsc::unbounded_channel();
-    let handle = Client { sender };
+) -> (
+    Client<E::Params>,
+    impl Future<Output = Result<(), BoxError>>,
+) {
+    let (socket_sender, socket_receiver) = mpsc::unbounded_channel();
+    let (call_sender, call_receiver) = mpsc::unbounded_channel();
+    let handle = Client { socket: socket_sender, calls: call_sender };
     let client = client_fn(handle.clone());
     let future = tokio::spawn(async move {
         let http_request = config.connect_http_request();
         tracing::info!("connecting to {}...", config.url);
-        let (stream, _) = tokio_tungstenite::connect_async(http_request)
-            .await?;
+        let (stream, _) = tokio_tungstenite::connect_async(http_request).await?;
         let socket = Socket::new(stream, Config::default());
         tracing::info!("connected to {}", config.url);
         let mut actor = ClientActor {
             client,
-            receiver,
+            socket_receiver,
+            call_receiver,
             socket,
             heartbeat: Instant::now(),
             config,
@@ -133,7 +129,8 @@ pub async fn connect<E: ClientExt + 'static>(
 
 struct ClientActor<E: ClientExt> {
     client: E,
-    receiver: mpsc::UnboundedReceiver<ClientMessage<E::Message>>,
+    socket_receiver: mpsc::UnboundedReceiver<Message>,
+    call_receiver: mpsc::UnboundedReceiver<E::Params>,
     socket: Socket,
     config: ClientConfig,
     heartbeat: Instant,
@@ -143,18 +140,14 @@ impl<E: ClientExt> ClientActor<E> {
     async fn run(&mut self) -> Result<(), BoxError> {
         loop {
             tokio::select! {
-                Some(message) = self.receiver.recv() => {
-                    match message {
-                        ClientMessage::Socket(message) => {
-                            self.socket.send(message.clone().into()).await;
-                            if let Message::Close(_frame) = message {
-                                return Ok(())
-                            }
-                        }
-                        ClientMessage::Call(message) => {
-                            self.client.message(message).await?;
-                        }
+                Some(message) = self.socket_receiver.recv() => {
+                    self.socket.send(message.clone().into()).await;
+                    if let Message::Close(_frame) = message {
+                        return Ok(())
                     }
+                }
+                Some(params) = self.call_receiver.recv() => {
+                    self.client.call(params).await?;
                 }
                 message = self.socket.recv() => {
                     match message {

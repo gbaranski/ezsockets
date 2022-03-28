@@ -14,7 +14,7 @@ enum ServerMessage<M> {
 }
 
 struct ServerActor<E: ServerExt> {
-    receiver: mpsc::UnboundedReceiver<ServerMessage<E::Message>>,
+    receiver: mpsc::UnboundedReceiver<ServerMessage<E::Params>>,
     extension: E,
 }
 
@@ -30,7 +30,7 @@ where
                 ServerMessage::Accept { socket, address } => {
                     self.accept(socket, address).await?;
                 }
-                ServerMessage::Message(message) => self.extension.message(message).await?,
+                ServerMessage::Message(message) => self.extension.call(message).await?,
             };
         }
 
@@ -47,7 +47,7 @@ where
 #[async_trait]
 pub trait ServerExt: Send {
     type Session: SessionExt;
-    type Message: Send;
+    type Params: Send;
 
     async fn accept(
         &mut self,
@@ -55,18 +55,18 @@ pub trait ServerExt: Send {
         address: SocketAddr,
     ) -> Result<Session, BoxError>;
     async fn disconnected(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), BoxError>;
-    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError>;
+    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError>;
 }
 
 #[derive(Debug)]
 pub struct Server<E: ServerExt> {
-    sender: mpsc::UnboundedSender<ServerMessage<E::Message>>,
+    sender: mpsc::UnboundedSender<ServerMessage<E::Params>>,
 }
 
 impl<E> Server<E>
 where
     E: ServerExt + 'static,
-    E::Message: std::fmt::Debug,
+    E::Params: std::fmt::Debug,
 {
     pub async fn create(
         create: impl FnOnce(Self) -> E,
@@ -98,7 +98,7 @@ where
             .unwrap();
     }
 
-    pub async fn call(&self, message: E::Message) {
+    pub async fn call(&self, message: E::Params) {
         self.sender
             .send(ServerMessage::Message(message))
             .map_err(|_| ())

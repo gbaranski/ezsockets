@@ -8,7 +8,7 @@ struct Client {}
 
 #[async_trait]
 impl ezsockets::ClientExt for Client {
-    type Message = ();
+    type Params = ();
 
     async fn text(&mut self, text: String) -> Result<(), BoxError> {
         tracing::info!("received message: {text}");
@@ -20,8 +20,8 @@ impl ezsockets::ClientExt for Client {
         Ok(())
     }
 
-    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError> {
-        match message {
+    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+        match params {
             () => {}
         }
         Ok(())

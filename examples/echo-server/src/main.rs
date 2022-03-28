@@ -11,7 +11,7 @@ struct EchoServer {}
 
 #[async_trait]
 impl ezsockets::ServerExt for EchoServer {
-    type Message = ();
+    type Params = ();
     type Session = EchoSession;
 
     async fn accept(
@@ -36,8 +36,8 @@ impl ezsockets::ServerExt for EchoServer {
         Ok(())
     }
 
-    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError> {
-        match message {
+    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+        match params {
             () => {}
         };
         Ok(())

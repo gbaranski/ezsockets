@@ -24,7 +24,7 @@ struct ChatServer {
 
 #[async_trait]
 impl ezsockets::ServerExt for ChatServer {
-    type Message = Message;
+    type Params = Message;
     type Session = SessionActor;
 
     async fn accept(
@@ -52,8 +52,8 @@ impl ezsockets::ServerExt for ChatServer {
         Ok(())
     }
 
-    async fn message(&mut self, message: Self::Message) -> Result<(), BoxError> {
-        match message {
+    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+        match params {
             Message::Broadcast { exceptions, text } => {
                 let sessions = self
                     .sessions
