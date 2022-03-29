@@ -6,13 +6,13 @@ use axum::Router;
 use ezsockets::axum::Upgrade;
 use ezsockets::Error;
 use ezsockets::Server;
-use ezsockets::Session;
-use ezsockets::SessionExt;
 use ezsockets::Socket;
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::net::SocketAddr;
+
 type SessionID = u8;
+type Session = ezsockets::Session<SessionID, ()>;
 
 #[derive(Debug)]
 enum ChatMessage {
@@ -24,22 +24,27 @@ enum ChatMessage {
 
 struct ChatServer {
     sessions: HashMap<SessionID, Session>,
-    handle: Server<ChatMessage>,
+    handle: Server<Self>,
 }
 
 #[async_trait]
 impl ezsockets::ServerExt for ChatServer {
     type Session = ChatSession;
     type Params = ChatMessage;
-    type Args = ();
 
-    async fn accept(&mut self, socket: Socket, _address: SocketAddr, _args: Self::Args) -> Result<Session, Error> {
+    async fn accept(
+        &mut self,
+        socket: Socket,
+        _address: SocketAddr,
+        _args: <Self::Session as ezsockets::SessionExt>::Args,
+    ) -> Result<Session, Error> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let handle = Session::create(
             |_| ChatSession {
                 id,
                 server: self.handle.clone(),
             },
+            id,
             socket,
         );
         self.sessions.insert(id, handle.clone());
@@ -48,7 +53,7 @@ impl ezsockets::ServerExt for ChatServer {
 
     async fn disconnected(
         &mut self,
-        id: <Self::Session as SessionExt>::ID,
+        id: <Self::Session as ezsockets::SessionExt>::ID,
     ) -> Result<(), Error> {
         assert!(self.sessions.remove(&id).is_some());
         Ok(())
@@ -73,18 +78,20 @@ impl ezsockets::ServerExt for ChatServer {
 
 struct ChatSession {
     id: SessionID,
-    server: Server<ChatMessage>,
+    server: Server<ChatServer>,
 }
 
 #[async_trait]
-impl SessionExt for ChatSession {
+impl ezsockets::SessionExt for ChatSession {
     type ID = SessionID;
+    type Args = ();
     type Params = ();
 
     fn id(&self) -> &Self::ID {
         &self.id
     }
     async fn text(&mut self, text: String) -> Result<(), Error> {
+        tracing::info!("received: {text}");
         self.server
             .call(ChatMessage::Broadcast {
                 exceptions: vec![self.id],
@@ -142,10 +149,8 @@ async fn main() {
 }
 
 async fn websocket_handler(
-    Extension(server): Extension<Server<ChatMessage>>,
+    Extension(server): Extension<Server<ChatServer>>,
     ezsocket: Upgrade,
 ) -> impl IntoResponse {
-    ezsocket.on_upgrade(|socket, address| async move {
-        server.accept(socket, address, ()).await;
-    })
+    ezsocket.on_upgrade(server, ())
 }

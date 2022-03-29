@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use ezsockets::Error;
 use ezsockets::Server;
-use ezsockets::Session;
 use ezsockets::Socket;
 use std::net::SocketAddr;
 
 type SessionID = u16;
+type Session = ezsockets::Session<SessionID, ()>;
 
 struct EchoServer {}
 
@@ -13,7 +13,6 @@ struct EchoServer {}
 impl ezsockets::ServerExt for EchoServer {
     type Params = ();
     type Session = EchoSession;
-    type Args = ();
 
     async fn accept(
         &mut self,
@@ -21,13 +20,8 @@ impl ezsockets::ServerExt for EchoServer {
         address: SocketAddr,
         _args: (),
     ) -> Result<Session, Error> {
-        let handle = Session::create(
-            |handle| EchoSession {
-                id: address.port(),
-                handle,
-            },
-            socket,
-        );
+        let id = address.port();
+        let handle = Session::create(|handle| EchoSession { id, handle }, id, socket);
         Ok(handle)
     }
 
@@ -54,6 +48,7 @@ struct EchoSession {
 #[async_trait]
 impl ezsockets::SessionExt for EchoSession {
     type ID = SessionID;
+    type Args = ();
     type Params = ();
 
     fn id(&self) -> &Self::ID {

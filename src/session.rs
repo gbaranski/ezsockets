@@ -1,15 +1,19 @@
-use crate::Error;
 use crate::CloseFrame;
+use crate::Error;
 use crate::Message;
 use crate::Socket;
 use async_trait::async_trait;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio::sync::watch;
 
 #[async_trait]
 pub trait SessionExt: Send {
     type ID: Send + Sync + Clone + std::fmt::Debug + std::fmt::Display;
-    type Params: std::fmt::Debug;
+    /// Arguments passed for creating a new session on server.
+    type Args: std::fmt::Debug + Send;
+    type Params: std::fmt::Debug + Send;
 
     fn id(&self) -> &Self::ID;
     async fn text(&mut self, text: String) -> Result<(), Error>;
@@ -18,39 +22,54 @@ pub trait SessionExt: Send {
 }
 
 #[derive(Debug)]
-pub struct Session<P: std::fmt::Debug = ()> {
+pub struct Session<I: std::fmt::Display + Clone, P: std::fmt::Debug> {
+    pub id: I,
     socket: mpsc::UnboundedSender<Message>,
     calls: mpsc::UnboundedSender<P>,
+    closed: watch::Receiver<Option<Arc<Result<Option<CloseFrame>, Error>>>>,
 }
 
-impl<P: std::fmt::Debug> std::clone::Clone for Session<P> {
+impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> std::clone::Clone for Session<I, P> {
     fn clone(&self) -> Self {
         Self {
+            id: self.id.clone(),
             socket: self.socket.clone(),
             calls: self.calls.clone(),
+            closed: self.closed.clone(),
         }
     }
 }
 
-impl<P: std::fmt::Debug + Send> Session<P> {
-    pub fn create<S: SessionExt<Params = P> + 'static>(
-        session_fn: impl FnOnce(Session<P>) -> S,
+impl<I: std::fmt::Display + Clone + Send, P: std::fmt::Debug + Send> Session<I, P> {
+    pub fn create<S: SessionExt<ID = I, Params = P> + 'static>(
+        session_fn: impl FnOnce(Session<I, P>) -> S,
+        session_id: I,
         socket: Socket,
     ) -> Self {
         let (socket_sender, socket_receiver) = mpsc::unbounded_channel();
         let (call_sender, call_receiver) = mpsc::unbounded_channel();
+        let (closed_sender, closed_receiver) = watch::channel(None);
         let handle = Self {
+            id: session_id,
             socket: socket_sender,
             calls: call_sender,
+            closed: closed_receiver,
         };
         let session = session_fn(handle.clone());
         let id = session.id().to_owned();
         let mut actor = SessionActor::new(session, id, socket_receiver, call_receiver, socket);
-        tokio::spawn(async move { actor.run().await });
+
+        tokio::spawn(async move {
+            closed_sender
+                .send(Some(Arc::new(actor.run().await)))
+                .unwrap();
+        });
 
         handle
     }
+}
 
+impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
     /// Sends a Text message to the server
     pub async fn text(&self, text: String) {
         self.socket.send(Message::Text(text)).unwrap();
@@ -68,7 +87,10 @@ impl<P: std::fmt::Debug + Send> Session<P> {
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
     /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
-    pub async fn call_with<R: std::fmt::Debug>(&self, f: impl FnOnce(oneshot::Sender<R>) -> P) -> R {
+    pub async fn call_with<R: std::fmt::Debug>(
+        &self,
+        f: impl FnOnce(oneshot::Sender<R>) -> P,
+    ) -> R {
         let (sender, receiver) = oneshot::channel();
         let params = f(sender);
 
@@ -76,6 +98,16 @@ impl<P: std::fmt::Debug + Send> Session<P> {
         let response = receiver.await.unwrap();
 
         response
+    }
+
+    pub async fn closed(&self) -> Arc<Result<Option<CloseFrame>, Error>> {
+        let mut closed = self.closed.clone();
+        loop {
+            closed.changed().await.unwrap();
+            if let Some(result) = closed.borrow().clone() {
+                return result;
+            }
+        }
     }
 }
 
@@ -104,7 +136,7 @@ impl<E: SessionExt> SessionActor<E> {
         }
     }
 
-    pub(crate) async fn run(&mut self) {
+    pub(crate) async fn run(&mut self) -> Result<Option<CloseFrame>, Error> {
         let id = self.id.to_owned();
         let result: Result<_, Error> = async move {
             loop {
@@ -137,12 +169,13 @@ impl<E: SessionExt> SessionActor<E> {
         }
         .await;
 
-        match result {
+        match &result {
             Ok(Some(CloseFrame { code, reason })) => {
                 tracing::info!(%id, ?code, %reason, "connection closed")
             }
             Ok(None) => tracing::info!(%id, "connection closed"),
             Err(err) => tracing::warn!(%id, "connection error: {err}"),
         };
+        result
     }
 }

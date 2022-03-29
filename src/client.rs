@@ -3,10 +3,10 @@ use crate::Error;
 use crate::Message;
 use crate::Socket;
 use async_trait::async_trait;
-use tokio::sync::oneshot;
 use std::future::Future;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 use url::Url;
@@ -69,7 +69,7 @@ pub trait ClientExt: Send {
 }
 
 #[derive(Debug)]
-pub struct Client<P: std::fmt::Debug = ()> {
+pub struct Client<P: std::fmt::Debug> {
     socket: mpsc::UnboundedSender<Message>,
     calls: mpsc::UnboundedSender<P>,
 }
@@ -104,7 +104,10 @@ impl<P: std::fmt::Debug> Client<P> {
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
     /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
-    pub async fn call_with<R: std::fmt::Debug>(&self, f: impl FnOnce(oneshot::Sender<R>) -> P) -> R {
+    pub async fn call_with<R: std::fmt::Debug>(
+        &self,
+        f: impl FnOnce(oneshot::Sender<R>) -> P,
+    ) -> R {
         let (sender, receiver) = oneshot::channel();
         let params = f(sender);
 
@@ -118,13 +121,13 @@ impl<P: std::fmt::Debug> Client<P> {
 pub async fn connect<E: ClientExt + 'static>(
     client_fn: impl FnOnce(Client<E::Params>) -> E,
     config: ClientConfig,
-) -> (
-    Client<E::Params>,
-    impl Future<Output = Result<(), Error>>,
-) {
+) -> (Client<E::Params>, impl Future<Output = Result<(), Error>>) {
     let (socket_sender, socket_receiver) = mpsc::unbounded_channel();
     let (call_sender, call_receiver) = mpsc::unbounded_channel();
-    let handle = Client { socket: socket_sender, calls: call_sender };
+    let handle = Client {
+        socket: socket_sender,
+        calls: call_sender,
+    };
     let client = client_fn(handle.clone());
     let future = tokio::spawn(async move {
         let http_request = config.connect_http_request();
@@ -140,7 +143,8 @@ pub async fn connect<E: ClientExt + 'static>(
             heartbeat: Instant::now(),
             config,
         };
-        actor.run().await
+        actor.run().await?;
+        Ok(())
     });
     let future = async move { future.await.unwrap() };
     (handle, future)
@@ -168,7 +172,7 @@ impl<E: ClientExt> ClientActor<E> {
                 Some(params) = self.call_receiver.recv() => {
                     self.client.call(params).await?;
                 }
-                message = self.socket.recv() => {
+                message = self.socket.stream.recv() => {
                     match message {
                         Some(message) => {
                              match message.to_owned() {

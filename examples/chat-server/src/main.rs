@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use ezsockets::Error;
 use ezsockets::Server;
-use ezsockets::Session;
 use ezsockets::Socket;
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::net::SocketAddr;
 
 type SessionID = u8;
+type Session = ezsockets::Session<SessionID, ()>;
 
 #[derive(Debug)]
 enum Message {
@@ -19,20 +19,19 @@ enum Message {
 
 struct ChatServer {
     sessions: HashMap<SessionID, Session>,
-    handle: Server<Message>,
+    handle: Server<Self>,
 }
 
 #[async_trait]
 impl ezsockets::ServerExt for ChatServer {
     type Params = Message;
     type Session = SessionActor;
-    type Args = ();
 
     async fn accept(
         &mut self,
         socket: Socket,
         _address: SocketAddr,
-        _args: Self::Args,
+        _args: <Self::Session as ezsockets::SessionExt>::Args,
     ) -> Result<Session, Error> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let handle = Session::create(
@@ -40,6 +39,7 @@ impl ezsockets::ServerExt for ChatServer {
                 id,
                 server: self.handle.clone(),
             },
+            id,
             socket,
         );
         self.sessions.insert(id, handle.clone());
@@ -73,12 +73,13 @@ impl ezsockets::ServerExt for ChatServer {
 
 struct SessionActor {
     id: SessionID,
-    server: Server<Message>,
+    server: Server<ChatServer>,
 }
 
 #[async_trait]
 impl ezsockets::SessionExt for SessionActor {
     type ID = SessionID;
+    type Args = ();
     type Params = ();
 
     fn id(&self) -> &Self::ID {
@@ -86,6 +87,7 @@ impl ezsockets::SessionExt for SessionActor {
     }
 
     async fn text(&mut self, text: String) -> Result<(), Error> {
+        tracing::info!("received: {text}");
         self.server
             .call(Message::Broadcast {
                 exceptions: vec![self.id],

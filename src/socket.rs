@@ -6,8 +6,8 @@ use std::{
     marker::PhantomData,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::Mutex;
 use tokio::sync::mpsc;
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -197,7 +197,7 @@ pub struct Sink {
 }
 
 impl Sink {
-    pub fn new<M, S>(sink: S) -> (tokio::task::JoinHandle<Result<(), Error>>, Self)
+    fn new<M, S>(sink: S) -> (tokio::task::JoinHandle<Result<(), Error>>, Self)
     where
         M: From<RawMessage> + Send + 'static,
         S: SinkExt<M, Error = Error> + Unpin + Send + 'static,
@@ -274,7 +274,7 @@ pub struct Stream {
 }
 
 impl Stream {
-    pub fn new<M, S>(
+    fn new<M, S>(
         stream: S,
         last_alive: Arc<Mutex<Instant>>,
     ) -> (tokio::task::JoinHandle<Result<(), Error>>, Self)
@@ -345,13 +345,17 @@ impl Socket {
             let result = stream_future.await.unwrap();
             sink_future.abort();
             heartbeat_future.abort();
-            match result {
+            match &result {
                 Ok(_) => tracing::info!("connection closed"),
                 Err(error) => tracing::info!("connection failed with error: {error}"),
-            }
+            };
+            result
         });
 
-        Self { sink, stream }
+        Self {
+            sink,
+            stream,
+        }
     }
 
     pub async fn send(&self, message: Message) {

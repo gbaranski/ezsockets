@@ -34,8 +34,8 @@ impl ezsockets::ClientExt for Client {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let url = Url::parse("ws://localhost:3000/websocket").unwrap();
-    let config = ClientConfig::new(url).basic("username", "password");
+    let url = Url::parse("ws://localhost:8080/websocket").unwrap();
+    let config = ClientConfig::new(url);
     let (handle, future) = ezsockets::connect(|client| Client { client }, config).await;
     tokio::spawn(async move {
         future.await.unwrap();

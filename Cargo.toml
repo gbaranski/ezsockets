@@ -29,6 +29,7 @@ tokio-tungstenite = { version = "0.17.1", optional = true }
 default = []
 
 client = ["tokio-tungstenite"]
+
 server = []
 server-tungstenite = ["server", "tokio-tungstenite"]
 server-axum = ["server", "axum"]
