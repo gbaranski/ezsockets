@@ -187,7 +187,8 @@ impl<E: ClientExt> ClientActor<E> {
         for i in 1.. {
             tokio::time::sleep(reconnect_interval).await;
             tracing::info!("reconnecting attempt no: {}...", i);
-            let result = tokio_tungstenite::connect_async(&self.config.url).await;
+            let connect_http_request = self.config.connect_http_request();
+            let result = tokio_tungstenite::connect_async(connect_http_request).await;
             match result {
                 Ok((socket, _)) => {
                     tracing::error!("successfully reconnected");
