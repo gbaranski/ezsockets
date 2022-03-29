@@ -59,8 +59,8 @@ pub struct Server<P: std::fmt::Debug = (), A: std::fmt::Debug = ()> {
     calls: mpsc::UnboundedSender<P>,
 }
 
-impl<P: std::fmt::Debug> From<Server<P>> for mpsc::UnboundedSender<P> {
-    fn from(server: Server<P>) -> Self {
+impl<P: std::fmt::Debug, A: std::fmt::Debug> From<Server<P, A>> for mpsc::UnboundedSender<P> {
+    fn from(server: Server<P, A>) -> Self {
         server.calls
     }
 }
