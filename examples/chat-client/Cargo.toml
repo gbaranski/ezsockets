@@ -1,5 +1,5 @@
 [package]
-name = "chat-client"
+name = "ezsockets-chat-client"
 version = "0.1.0"
 edition = "2021"
 

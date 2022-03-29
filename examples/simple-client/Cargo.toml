@@ -1,5 +1,5 @@
 [package]
-name = "simple-client"
+name = "ezsockets-simple-client"
 version = "0.1.0"
 edition = "2021"
 
