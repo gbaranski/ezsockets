@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 #[async_trait]
 pub trait SessionExt: Send {
     type ID: Send + Sync + Clone + std::fmt::Debug + std::fmt::Display;
-    type Params;
+    type Params: std::fmt::Debug;
 
     fn id(&self) -> &Self::ID;
     async fn text(&mut self, text: String) -> Result<(), Error>;
