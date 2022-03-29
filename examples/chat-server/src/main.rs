@@ -34,7 +34,7 @@ impl ezsockets::ServerExt for ChatServer {
         _args: <Self::Session as ezsockets::SessionExt>::Args,
     ) -> Result<Session, Error> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
-        let handle = Session::create(
+        let session = Session::create(
             |_handle| SessionActor {
                 id,
                 server: self.handle.clone(),
@@ -42,8 +42,8 @@ impl ezsockets::ServerExt for ChatServer {
             id,
             socket,
         );
-        self.sessions.insert(id, handle.clone());
-        Ok(handle)
+        self.sessions.insert(id, session.clone());
+        Ok(session)
     }
 
     async fn disconnected(

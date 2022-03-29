@@ -38,38 +38,4 @@ cfg_if::cfg_if! {
     }
 }
 
-use std::sync::Arc;
-
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum Error {
-    #[error("io: {0}")]
-    Io(Arc<std::io::Error>),
-
-    #[cfg(feature = "axum")]
-    #[error("axum: {0}")]
-    Axum(Arc<::axum::Error>),
-
-    #[cfg(feature = "tokio-tungstenite")]
-    #[error("tungstenite: {0}")]
-    Tungstenite(Arc<tokio_tungstenite::tungstenite::Error>),
-}
-
-impl From<std::io::Error> for Error {
-    fn from(error: std::io::Error) -> Self {
-        Self::Io(Arc::new(error))
-    }
-}
-
-#[cfg(feature = "axum")]
-impl From<::axum::Error> for Error {
-    fn from(error: ::axum::Error) -> Self {
-        Self::Axum(Arc::new(error))
-    }
-}
-
-#[cfg(feature = "tokio-tungstenite")]
-impl From<tokio_tungstenite::tungstenite::Error> for Error {
-    fn from(error: tokio_tungstenite::tungstenite::Error) -> Self {
-        Self::Tungstenite(Arc::new(error))
-    }
-}
+pub type Error = Box<dyn std::error::Error + Send + Sync>;

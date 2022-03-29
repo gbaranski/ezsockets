@@ -16,7 +16,10 @@ struct ServerActor<E: ServerExt> {
         <E::Session as SessionExt>::Args,
         oneshot::Sender<<E::Session as SessionExt>::ID>,
     )>,
-    disconnections: mpsc::UnboundedReceiver<(<E::Session as SessionExt>::ID, Result<Option<CloseFrame>, Error>)>,
+    disconnections: mpsc::UnboundedReceiver<(
+        <E::Session as SessionExt>::ID,
+        Result<Option<CloseFrame>, Error>,
+    )>,
     calls: mpsc::UnboundedReceiver<E::Params>,
     server: Server<E>,
     extension: E,
@@ -76,7 +79,7 @@ pub trait ServerExt: Send {
         address: SocketAddr,
         args: <Self::Session as SessionExt>::Args,
     ) -> Result<
-        Session<<Self::Session as SessionExt>::ID, <Self::Session as SessionExt>::Params>,
+            Session<<Self::Session as SessionExt>::ID, <Self::Session as SessionExt>::Params>,
         Error,
     >;
     async fn disconnected(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), Error>;
@@ -91,7 +94,10 @@ pub struct Server<E: ServerExt> {
         <E::Session as SessionExt>::Args,
         oneshot::Sender<<E::Session as SessionExt>::ID>,
     )>,
-    disconnections: mpsc::UnboundedSender<(<E::Session as SessionExt>::ID, Result<Option<CloseFrame>, Error>)>,
+    disconnections: mpsc::UnboundedSender<(
+        <E::Session as SessionExt>::ID,
+        Result<Option<CloseFrame>, Error>,
+    )>,
     calls: mpsc::UnboundedSender<E::Params>,
 }
 
@@ -146,8 +152,15 @@ impl<E: ServerExt> Server<E> {
         session_id
     }
 
-    pub(crate) async fn disconnected(&self, id: <E::Session as SessionExt>::ID, result: Result<Option<CloseFrame>, Error>) {
-        self.disconnections.send((id, result)).map_err(|_| ()).unwrap();
+    pub(crate) async fn disconnected(
+        &self,
+        id: <E::Session as SessionExt>::ID,
+        result: Result<Option<CloseFrame>, Error>,
+    ) {
+        self.disconnections
+            .send((id, result))
+            .map_err(|_| ())
+            .unwrap();
     }
 
     pub async fn call(&self, params: E::Params) {

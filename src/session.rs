@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::CloseFrame;
 use crate::Error;
 use crate::Message;
@@ -5,7 +7,7 @@ use crate::Socket;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio::sync::watch;
+use tokio::sync::Mutex;
 
 #[async_trait]
 pub trait SessionExt: Send {
@@ -25,7 +27,7 @@ pub struct Session<I: std::fmt::Display + Clone, P: std::fmt::Debug> {
     pub id: I,
     socket: mpsc::UnboundedSender<Message>,
     calls: mpsc::UnboundedSender<P>,
-    closed: watch::Receiver<Option<Result<Option<CloseFrame>, Error>>>,
+    closed: Arc<Mutex<Option<oneshot::Receiver<Result<Option<CloseFrame>, Error>>>>>,
 }
 
 impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> std::clone::Clone for Session<I, P> {
@@ -47,20 +49,20 @@ impl<I: std::fmt::Display + Clone + Send, P: std::fmt::Debug + Send> Session<I, 
     ) -> Self {
         let (socket_sender, socket_receiver) = mpsc::unbounded_channel();
         let (call_sender, call_receiver) = mpsc::unbounded_channel();
-        let (closed_sender, closed_receiver) = watch::channel(None);
+        let (closed_sender, closed_receiver) = oneshot::channel();
         let handle = Self {
             id: session_id.clone(),
             socket: socket_sender,
             calls: call_sender,
-            closed: closed_receiver,
+            closed: Arc::new(Mutex::new(Some(closed_receiver))),
         };
         let session = session_fn(handle.clone());
-        let mut actor = SessionActor::new(session, session_id, socket_receiver, call_receiver, socket);
+        let mut actor =
+            SessionActor::new(session, session_id, socket_receiver, call_receiver, socket);
 
         tokio::spawn(async move {
-            closed_sender
-                .send(Some(actor.run().await))
-                .unwrap();
+            let result = actor.run().await;
+            closed_sender.send(result).unwrap();
         });
 
         handle
@@ -68,6 +70,18 @@ impl<I: std::fmt::Display + Clone + Send, P: std::fmt::Debug + Send> Session<I, 
 }
 
 impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
+    #[doc(hidden)]
+    /// WARN: Use only if really nessesary.
+    /// 
+    /// this uses some hack, which takes ownership of underlaying `oneshot::Receiver`, making it unaccessible for all future calls of this method. 
+    pub(super) async fn closed(&self) -> Result<Option<CloseFrame>, Error> {
+        let mut closed = self.closed.lock().await;
+        let closed = closed
+            .take()
+            .expect("someone already called .closed() before");
+        closed.await.unwrap()
+    }
+
     /// Sends a Text message to the server
     pub async fn text(&self, text: String) {
         self.socket.send(Message::Text(text)).unwrap();
@@ -96,16 +110,6 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
         let response = receiver.await.unwrap();
 
         response
-    }
-
-    pub async fn closed(&self) -> Result<Option<CloseFrame>, Error> {
-        let mut closed = self.closed.clone();
-        loop {
-            closed.changed().await.unwrap();
-            if let Some(result) = closed.borrow().clone() {
-                return result;
-            }
-        }
     }
 }
 

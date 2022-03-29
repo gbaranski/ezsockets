@@ -21,8 +21,8 @@ impl ezsockets::ServerExt for EchoServer {
         _args: (),
     ) -> Result<Session, Error> {
         let id = address.port();
-        let handle = Session::create(|handle| EchoSession { id, handle }, id, socket);
-        Ok(handle)
+        let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
+        Ok(session)
     }
 
     async fn disconnected(
