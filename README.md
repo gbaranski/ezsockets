@@ -86,6 +86,7 @@ struct EchoSession {
 #[async_trait]
 impl ezsockets::SessionExt for EchoSession {
     type ID = SessionID;
+    type Params = ();
 
     fn id(&self) -> &Self::ID {
         &self.id
@@ -98,6 +99,13 @@ impl ezsockets::SessionExt for EchoSession {
 
     async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), BoxError> {
         unimplemented!()
+    }
+
+    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+        match params {
+            () => {}
+        }
+        Ok(())
     }
 }
 ```

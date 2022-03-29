@@ -8,27 +8,43 @@ use tokio::sync::mpsc;
 #[async_trait]
 pub trait SessionExt: Send {
     type ID: Send + Sync + Clone + std::fmt::Debug + std::fmt::Display;
+    type Params;
 
     fn id(&self) -> &Self::ID;
     async fn text(&mut self, text: String) -> Result<(), BoxError>;
     async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), BoxError>;
+    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError>;
 }
 
-#[derive(Debug, Clone)]
-pub struct Session {
-    sender: mpsc::UnboundedSender<Message>,
+#[derive(Debug)]
+pub struct Session<P: std::fmt::Debug = ()> {
+    socket: mpsc::UnboundedSender<Message>,
+    calls: mpsc::UnboundedSender<P>,
 }
 
-impl Session {
-    pub fn create<S: SessionExt + 'static>(
-        session_fn: impl FnOnce(Session) -> S,
+impl<P: std::fmt::Debug> std::clone::Clone for Session<P> {
+    fn clone(&self) -> Self {
+        Self {
+            socket: self.socket.clone(),
+            calls: self.calls.clone(),
+        }
+    }
+}
+
+impl<P: std::fmt::Debug + Send> Session<P> {
+    pub fn create<S: SessionExt<Params = P> + 'static>(
+        session_fn: impl FnOnce(Session<P>) -> S,
         socket: Socket,
     ) -> Self {
-        let (sender, receiver) = mpsc::unbounded_channel();
-        let handle = Self { sender };
+        let (socket_sender, socket_receiver) = mpsc::unbounded_channel();
+        let (call_sender, call_receiver) = mpsc::unbounded_channel();
+        let handle = Self {
+            socket: socket_sender,
+            calls: call_sender,
+        };
         let session = session_fn(handle.clone());
         let id = session.id().to_owned();
-        let mut actor = SessionActor::new(session, id, receiver, socket);
+        let mut actor = SessionActor::new(session, id, socket_receiver, call_receiver, socket);
         tokio::spawn(async move { actor.run().await });
 
         handle
@@ -36,19 +52,25 @@ impl Session {
 
     /// Sends a Text message to the server
     pub async fn text(&self, text: String) {
-        self.sender.send(Message::Text(text)).unwrap();
+        self.socket.send(Message::Text(text)).unwrap();
     }
 
     /// Sends a Binary message to the server
     pub async fn binary(&self, bytes: Vec<u8>) {
-        self.sender.send(Message::Binary(bytes)).unwrap();
+        self.socket.send(Message::Binary(bytes)).unwrap();
+    }
+
+    /// Calls a method on the session
+    pub async fn call(&self, params: P) {
+        self.calls.send(params).unwrap();
     }
 }
 
 pub(crate) struct SessionActor<E: SessionExt> {
     pub extension: E,
     pub id: E::ID,
-    receiver: mpsc::UnboundedReceiver<Message>,
+    socket_receiver: mpsc::UnboundedReceiver<Message>,
+    call_receiver: mpsc::UnboundedReceiver<E::Params>,
     socket: Socket,
 }
 
@@ -56,13 +78,15 @@ impl<E: SessionExt> SessionActor<E> {
     pub(crate) fn new(
         extension: E,
         id: E::ID,
-        receiver: mpsc::UnboundedReceiver<Message>,
+        socket_receiver: mpsc::UnboundedReceiver<Message>,
+        call_receiver: mpsc::UnboundedReceiver<E::Params>,
         socket: Socket,
     ) -> Self {
         Self {
             extension,
             id,
-            receiver,
+            socket_receiver,
+            call_receiver,
             socket,
         }
     }
@@ -72,11 +96,14 @@ impl<E: SessionExt> SessionActor<E> {
         let result: Result<_, BoxError> = async move {
             loop {
                 tokio::select! {
-                    Some(message) = self.receiver.recv() => {
+                    Some(message) = self.socket_receiver.recv() => {
                         self.socket.send(message.clone().into()).await;
                         if let Message::Close(frame) = message {
                             return Ok(frame)
                         }
+                    }
+                    Some(params) = self.call_receiver.recv() => {
+                        self.extension.call(params).await?;
                     }
                     message = self.socket.recv() => {
                         match message {
