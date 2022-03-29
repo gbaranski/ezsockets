@@ -19,7 +19,7 @@ enum Message {
 
 struct ChatServer {
     sessions: HashMap<SessionID, Session>,
-    handle: Server<ChatServer>,
+    handle: Server<Message>,
 }
 
 #[async_trait]
@@ -71,7 +71,7 @@ impl ezsockets::ServerExt for ChatServer {
 
 struct SessionActor {
     id: SessionID,
-    server: Server<ChatServer>,
+    server: Server<Message>,
 }
 
 #[async_trait]

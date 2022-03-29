@@ -217,7 +217,7 @@ async fn main() {
 }
 
 async fn websocket_handler(
-    Extension(server): Extension<ezsockets::Server<MyServer>>,
+    Extension(server): Extension<ezsockets::Server>,
     ezsocket: Upgrade,
 ) -> impl IntoResponse {
     ezsocket.on_upgrade(|socket, address| async move {

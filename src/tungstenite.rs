@@ -102,7 +102,6 @@ impl From<Message> for tungstenite::Message {
 cfg_if::cfg_if! {
     if #[cfg(feature = "server")] {
         use crate::Server;
-        use crate::ServerExt;
         use crate::BoxError;
         use crate::Socket;
         use crate::socket;
@@ -110,8 +109,8 @@ cfg_if::cfg_if! {
         use tokio::net::TcpListener;
         use tokio::net::ToSocketAddrs;
 
-        pub async fn run<E: ServerExt, A: ToSocketAddrs>(
-            server: Server<E>,
+        pub async fn run<P: std::fmt::Debug, A: ToSocketAddrs>(
+            server: Server<P>,
             address: A,
         ) -> Result<(), BoxError> {
             let listener = TcpListener::bind(address).await?;
