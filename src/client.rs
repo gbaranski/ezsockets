@@ -164,7 +164,7 @@ impl<E: ClientExt> ClientActor<E> {
         loop {
             tokio::select! {
                 Some(message) = self.socket_receiver.recv() => {
-                    self.socket.send(message.clone().into()).await;
+                    self.socket.send(message.clone()).await;
                     if let Message::Close(_frame) = message {
                         return Ok(())
                     }

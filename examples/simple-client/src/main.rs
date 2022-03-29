@@ -21,9 +21,7 @@ impl ezsockets::ClientExt for Client {
     }
 
     async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
-        match params {
-            () => {}
-        }
+        let () = params;
         Ok(())
     }
 }
@@ -31,8 +29,8 @@ impl ezsockets::ClientExt for Client {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let url = format!("ws://127.0.0.1:8080");
-    let url = Url::parse(&url).unwrap();
+    let url = "ws://127.0.0.1:8080";
+    let url = Url::parse(url).unwrap();
     let config = ClientConfig::new(url);
     let (handle, future) = ezsockets::connect(|_| Client {}, config).await;
     tokio::spawn(async move {

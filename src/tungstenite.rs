@@ -76,19 +76,18 @@ impl From<RawMessage> for tungstenite::Message {
     }
 }
 
-impl Into<RawMessage> for tungstenite::Message {
-    fn into(self) -> RawMessage {
-        match self {
-            tungstenite::Message::Text(text) => RawMessage::Text(text),
-            tungstenite::Message::Binary(bytes) => RawMessage::Binary(bytes),
-            tungstenite::Message::Ping(bytes) => RawMessage::Ping(bytes),
-            tungstenite::Message::Pong(bytes) => RawMessage::Pong(bytes),
-            tungstenite::Message::Close(frame) => RawMessage::Close(frame.map(CloseFrame::from)),
+impl From<tungstenite::Message> for RawMessage {
+    fn from(message: tungstenite::Message) -> Self {
+        match message {
+            tungstenite::Message::Text(text) => Self::Text(text),
+            tungstenite::Message::Binary(bytes) => Self::Binary(bytes),
+            tungstenite::Message::Ping(bytes) => Self::Ping(bytes),
+            tungstenite::Message::Pong(bytes) => Self::Pong(bytes),
+            tungstenite::Message::Close(frame) => Self::Close(frame.map(CloseFrame::from)),
             tungstenite::Message::Frame(_) => unreachable!(),
         }
     }
 }
-
 impl From<Message> for tungstenite::Message {
     fn from(message: Message) -> Self {
         match message {

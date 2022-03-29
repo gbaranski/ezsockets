@@ -33,9 +33,7 @@ impl ezsockets::ServerExt for EchoServer {
     }
 
     async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
-        match params {
-            () => {}
-        };
+        let () = params;
         Ok(())
     }
 }
@@ -64,9 +62,7 @@ impl ezsockets::SessionExt for EchoSession {
     }
 
     async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
-        match params {
-            () => {}
-        }
+        let () = params;
         Ok(())
     }
 }

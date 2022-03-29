@@ -102,9 +102,7 @@ impl ezsockets::SessionExt for SessionActor {
     }
 
     async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
-        match params {
-            () => {}
-        }
+        let () = params;
         Ok(())
     }
 }

@@ -9,17 +9,21 @@ use std::net::SocketAddr;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
+struct NewConnection<E: ServerExt> {
+    socket: Socket,
+    address: SocketAddr,
+    args: <E::Session as SessionExt>::Args,
+    respond_to: oneshot::Sender<<E::Session as SessionExt>::ID>,
+}
+
+struct Disconnected<E: ServerExt> {
+    id: <E::Session as SessionExt>::ID,
+    result: Result<Option<CloseFrame>, Error>,
+}
+
 struct ServerActor<E: ServerExt> {
-    connections: mpsc::UnboundedReceiver<(
-        Socket,
-        SocketAddr,
-        <E::Session as SessionExt>::Args,
-        oneshot::Sender<<E::Session as SessionExt>::ID>,
-    )>,
-    disconnections: mpsc::UnboundedReceiver<(
-        <E::Session as SessionExt>::ID,
-        Result<Option<CloseFrame>, Error>,
-    )>,
+    connections: mpsc::UnboundedReceiver<NewConnection<E>>,
+    disconnections: mpsc::UnboundedReceiver<Disconnected<E>>,
     calls: mpsc::UnboundedReceiver<E::Params>,
     server: Server<E>,
     extension: E,
@@ -34,7 +38,7 @@ where
         tracing::info!("starting server");
         loop {
             tokio::select! {
-                Some((socket, address, args, respond_to)) = self.connections.recv() => {
+                Some(NewConnection{socket, address, args, respond_to}) = self.connections.recv() => {
                     let session = self.extension.accept(socket, address, args).await?;
                     let session_id = session.id.clone();
                     tracing::info!("connection from {address} accepted");
@@ -48,7 +52,7 @@ where
                         }
                     });
                 }
-                Some((id, result)) = self.disconnections.recv() => {
+                Some(Disconnected{id, result}) = self.disconnections.recv() => {
                     self.extension.disconnected(id.clone()).await?;
                     match result {
                         Ok(Some(CloseFrame { code, reason })) => {
@@ -88,16 +92,8 @@ pub trait ServerExt: Send {
 
 #[derive(Debug)]
 pub struct Server<E: ServerExt> {
-    connections: mpsc::UnboundedSender<(
-        Socket,
-        SocketAddr,
-        <E::Session as SessionExt>::Args,
-        oneshot::Sender<<E::Session as SessionExt>::ID>,
-    )>,
-    disconnections: mpsc::UnboundedSender<(
-        <E::Session as SessionExt>::ID,
-        Result<Option<CloseFrame>, Error>,
-    )>,
+    connections: mpsc::UnboundedSender<NewConnection<E>>,
+    disconnections: mpsc::UnboundedSender<Disconnected<E>>,
     calls: mpsc::UnboundedSender<E::Params>,
 }
 
@@ -145,7 +141,12 @@ impl<E: ServerExt> Server<E> {
     ) -> <E::Session as SessionExt>::ID {
         let (sender, receiver) = oneshot::channel();
         self.connections
-            .send((socket, address, args, sender))
+            .send(NewConnection {
+                socket,
+                address,
+                args,
+                respond_to: sender,
+            })
             .map_err(|_| ())
             .unwrap();
         let session_id = receiver.await.unwrap();
@@ -158,7 +159,7 @@ impl<E: ServerExt> Server<E> {
         result: Result<Option<CloseFrame>, Error>,
     ) {
         self.disconnections
-            .send((id, result))
+            .send(Disconnected { id, result })
             .map_err(|_| ())
             .unwrap();
     }

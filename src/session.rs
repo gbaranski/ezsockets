@@ -22,12 +22,14 @@ pub trait SessionExt: Send {
     async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
 }
 
+type CloseReceiver = oneshot::Receiver<Result<Option<CloseFrame>, Error>>;
+
 #[derive(Debug)]
 pub struct Session<I: std::fmt::Display + Clone, P: std::fmt::Debug> {
     pub id: I,
     socket: mpsc::UnboundedSender<Message>,
     calls: mpsc::UnboundedSender<P>,
-    closed: Arc<Mutex<Option<oneshot::Receiver<Result<Option<CloseFrame>, Error>>>>>,
+    closed: Arc<Mutex<Option<CloseReceiver>>>,
 }
 
 impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> std::clone::Clone for Session<I, P> {
@@ -142,7 +144,7 @@ impl<E: SessionExt> SessionActor<E> {
         loop {
             tokio::select! {
                 Some(message) = self.socket_receiver.recv() => {
-                    self.socket.send(message.clone().into()).await;
+                    self.socket.send(message.clone()).await;
                     if let Message::Close(frame) = message {
                         return Ok(frame)
                     }

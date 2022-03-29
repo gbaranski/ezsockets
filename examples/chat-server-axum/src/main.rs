@@ -106,9 +106,7 @@ impl ezsockets::SessionExt for ChatSession {
     }
 
     async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
-        match params {
-            () => {}
-        };
+        let () = params;
         Ok(())
     }
 }
