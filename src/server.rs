@@ -53,6 +53,12 @@ pub struct Server<P: std::fmt::Debug = ()> {
     calls: mpsc::UnboundedSender<P>,
 }
 
+impl<P: std::fmt::Debug> From<Server<P>> for mpsc::UnboundedSender<P> {
+    fn from(server: Server<P>) -> Self {
+        server.calls
+    }
+}
+
 impl<P: std::fmt::Debug + Send> Server<P> {
     pub fn create<E: ServerExt<Params = P> + 'static>(
         create: impl FnOnce(Self) -> E,
