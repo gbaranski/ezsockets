@@ -72,8 +72,8 @@ impl<I: std::fmt::Display + Clone + Send, P: std::fmt::Debug + Send> Session<I, 
 impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
     #[doc(hidden)]
     /// WARN: Use only if really nessesary.
-    /// 
-    /// this uses some hack, which takes ownership of underlaying `oneshot::Receiver`, making it unaccessible for all future calls of this method. 
+    ///
+    /// this uses some hack, which takes ownership of underlaying `oneshot::Receiver`, making it unaccessible for all future calls of this method.
     pub(super) async fn closed(&self) -> Result<Option<CloseFrame>, Error> {
         let mut closed = self.closed.lock().await;
         let closed = closed

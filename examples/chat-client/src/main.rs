@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use ezsockets::Error;
 use ezsockets::ClientConfig;
+use ezsockets::Error;
 use std::io::BufRead;
 use url::Url;
 

@@ -4,9 +4,9 @@ pub use socket::CloseCode;
 pub use socket::CloseFrame;
 pub use socket::Message;
 pub use socket::RawMessage;
+pub use socket::Sink;
 pub use socket::Socket;
 pub use socket::Stream;
-pub use socket::Sink;
 
 #[cfg(feature = "server-axum")]
 pub mod axum;

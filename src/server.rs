@@ -79,7 +79,7 @@ pub trait ServerExt: Send {
         address: SocketAddr,
         args: <Self::Session as SessionExt>::Args,
     ) -> Result<
-            Session<<Self::Session as SessionExt>::ID, <Self::Session as SessionExt>::Params>,
+        Session<<Self::Session as SessionExt>::ID, <Self::Session as SessionExt>::Params>,
         Error,
     >;
     async fn disconnected(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), Error>;
