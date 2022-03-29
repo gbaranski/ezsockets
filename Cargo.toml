@@ -24,6 +24,7 @@ cfg-if = "1.0.0"
 
 axum = { version = "0.4.8", features = ["ws"], optional = true }
 tokio-tungstenite = { version = "0.17.1", optional = true }
+thiserror = "1.0.30"
 
 [features]
 default = []

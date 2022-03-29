@@ -172,9 +172,9 @@ impl<E: ClientExt> ClientActor<E> {
                 Some(params) = self.call_receiver.recv() => {
                     self.client.call(params).await?;
                 }
-                message = self.socket.stream.recv() => {
-                    match message {
-                        Some(message) => {
+                result = self.socket.stream.recv() => {
+                    match result {
+                        Some(Ok(message)) => {
                              match message.to_owned() {
                                 Message::Text(text) => self.client.text(text).await?,
                                 Message::Binary(bytes) => self.client.binary(bytes).await?,
@@ -182,6 +182,9 @@ impl<E: ClientExt> ClientActor<E> {
                                     self.reconnect().await;
                                 }
                             };
+                        }
+                        Some(Err(error)) => {
+                            tracing::error!("connection error: {error}");
                         }
                         None => {
                             self.reconnect().await;

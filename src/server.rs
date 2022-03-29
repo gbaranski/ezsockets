@@ -1,3 +1,4 @@
+use crate::CloseFrame;
 use crate::Error;
 use crate::Session;
 use crate::SessionExt;
@@ -15,7 +16,7 @@ struct ServerActor<E: ServerExt> {
         <E::Session as SessionExt>::Args,
         oneshot::Sender<<E::Session as SessionExt>::ID>,
     )>,
-    disconnections: mpsc::UnboundedReceiver<<E::Session as SessionExt>::ID>,
+    disconnections: mpsc::UnboundedReceiver<(<E::Session as SessionExt>::ID, Result<Option<CloseFrame>, Error>)>,
     calls: mpsc::UnboundedReceiver<E::Params>,
     server: Server<E>,
     extension: E,
@@ -39,14 +40,20 @@ where
                     tokio::spawn({
                         let server = self.server.clone();
                         async move {
-                            session.closed().await;
-                            server.disconnected(session_id).await;
+                            let result = session.closed().await;
+                            server.disconnected(session_id, result).await;
                         }
                     });
                 }
-                Some(id) = self.disconnections.recv() => {
+                Some((id, result)) = self.disconnections.recv() => {
                     self.extension.disconnected(id.clone()).await?;
-                    tracing::info!("{id} disconnected");
+                    match result {
+                        Ok(Some(CloseFrame { code, reason })) => {
+                            tracing::info!(%id, ?code, %reason, "connection closed")
+                        }
+                        Ok(None) => tracing::info!(%id, "connection closed"),
+                        Err(err) => tracing::warn!(%id, "connection closed due to: {err}"),
+                    };
                 }
                 Some(params) = self.calls.recv() => {
                     self.extension.call(params).await?
@@ -84,7 +91,7 @@ pub struct Server<E: ServerExt> {
         <E::Session as SessionExt>::Args,
         oneshot::Sender<<E::Session as SessionExt>::ID>,
     )>,
-    disconnections: mpsc::UnboundedSender<<E::Session as SessionExt>::ID>,
+    disconnections: mpsc::UnboundedSender<(<E::Session as SessionExt>::ID, Result<Option<CloseFrame>, Error>)>,
     calls: mpsc::UnboundedSender<E::Params>,
 }
 
@@ -139,8 +146,8 @@ impl<E: ServerExt> Server<E> {
         session_id
     }
 
-    pub(crate) async fn disconnected(&self, id: <E::Session as SessionExt>::ID) {
-        self.disconnections.send(id).map_err(|_| ()).unwrap();
+    pub(crate) async fn disconnected(&self, id: <E::Session as SessionExt>::ID, result: Result<Option<CloseFrame>, Error>) {
+        self.disconnections.send((id, result)).map_err(|_| ()).unwrap();
     }
 
     pub async fn call(&self, params: E::Params) {

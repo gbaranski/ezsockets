@@ -231,7 +231,7 @@ where
     M: Into<RawMessage>,
     S: StreamExt<Item = Result<M, Error>> + Unpin,
 {
-    sender: mpsc::UnboundedSender<Message>,
+    sender: mpsc::UnboundedSender<Result<Message, Error>>,
     stream: S,
     last_alive: Arc<Mutex<Instant>>,
 }
@@ -242,25 +242,29 @@ where
     S: StreamExt<Item = Result<M, Error>> + Unpin,
 {
     async fn run(&mut self) -> Result<(), Error> {
-        while let Some(message) = self.stream.next().await.transpose()? {
-            let message: RawMessage = message.into();
-            tracing::trace!("received message: {:?}", message);
-            let message = match message {
-                RawMessage::Text(text) => Message::Text(text),
-                RawMessage::Binary(bytes) => Message::Binary(bytes),
-                RawMessage::Ping(_bytes) => continue,
-                RawMessage::Pong(bytes) => {
-                    *self.last_alive.lock().await = Instant::now();
-                    let bytes: [u8; 16] = bytes.try_into().unwrap(); // TODO: handle invalid byte frame
-                    let timestamp = u128::from_be_bytes(bytes);
-                    let timestamp = Duration::from_millis(timestamp as u64); // TODO: handle overflow
-                    let latency = SystemTime::now()
-                        .duration_since(UNIX_EPOCH + timestamp)
-                        .unwrap();
-                    tracing::trace!("latency: {}ms", latency.as_millis());
-                    continue;
-                }
-                RawMessage::Close(_) => return Ok(()),
+        while let Some(result) = self.stream.next().await {
+            let result = result.map(M::into);
+            tracing::trace!("received message: {:?}", result);
+
+            let message = match result {
+                Ok(message) => Ok(match message {
+                    RawMessage::Text(text) => Message::Text(text),
+                    RawMessage::Binary(bytes) => Message::Binary(bytes),
+                    RawMessage::Ping(_bytes) => continue,
+                    RawMessage::Pong(bytes) => {
+                        *self.last_alive.lock().await = Instant::now();
+                        let bytes: [u8; 16] = bytes.try_into().unwrap(); // TODO: handle invalid byte frame
+                        let timestamp = u128::from_be_bytes(bytes);
+                        let timestamp = Duration::from_millis(timestamp as u64); // TODO: handle overflow
+                        let latency = SystemTime::now()
+                            .duration_since(UNIX_EPOCH + timestamp)
+                            .unwrap();
+                        tracing::trace!("latency: {}ms", latency.as_millis());
+                        continue;
+                    }
+                    RawMessage::Close(_) => return Ok(()),
+                }),
+                Err(err) => Err(err), // maybe early return here?
             };
             self.sender.send(message).unwrap();
         }
@@ -270,7 +274,7 @@ where
 
 #[derive(Debug)]
 pub struct Stream {
-    receiver: mpsc::UnboundedReceiver<Message>,
+    receiver: mpsc::UnboundedReceiver<Result<Message, Error>>,
 }
 
 impl Stream {
@@ -292,7 +296,7 @@ impl Stream {
         (future, Self { receiver })
     }
 
-    pub async fn recv(&mut self) -> Option<Message> {
+    pub async fn recv(&mut self) -> Option<Result<Message, Error>> {
         self.receiver.recv().await
     }
 }
@@ -345,17 +349,10 @@ impl Socket {
             let result = stream_future.await.unwrap();
             sink_future.abort();
             heartbeat_future.abort();
-            match &result {
-                Ok(_) => tracing::info!("connection closed"),
-                Err(error) => tracing::info!("connection failed with error: {error}"),
-            };
             result
         });
 
-        Self {
-            sink,
-            stream,
-        }
+        Self { sink, stream }
     }
 
     pub async fn send(&self, message: Message) {
@@ -366,7 +363,7 @@ impl Socket {
         self.sink.send_raw(message).await;
     }
 
-    pub async fn recv(&mut self) -> Option<Message> {
+    pub async fn recv(&mut self) -> Option<Result<Message, Error>> {
         self.stream.recv().await
     }
 }

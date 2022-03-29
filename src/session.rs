@@ -3,7 +3,6 @@ use crate::Error;
 use crate::Message;
 use crate::Socket;
 use async_trait::async_trait;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -26,7 +25,7 @@ pub struct Session<I: std::fmt::Display + Clone, P: std::fmt::Debug> {
     pub id: I,
     socket: mpsc::UnboundedSender<Message>,
     calls: mpsc::UnboundedSender<P>,
-    closed: watch::Receiver<Option<Arc<Result<Option<CloseFrame>, Error>>>>,
+    closed: watch::Receiver<Option<Result<Option<CloseFrame>, Error>>>,
 }
 
 impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> std::clone::Clone for Session<I, P> {
@@ -50,18 +49,17 @@ impl<I: std::fmt::Display + Clone + Send, P: std::fmt::Debug + Send> Session<I, 
         let (call_sender, call_receiver) = mpsc::unbounded_channel();
         let (closed_sender, closed_receiver) = watch::channel(None);
         let handle = Self {
-            id: session_id,
+            id: session_id.clone(),
             socket: socket_sender,
             calls: call_sender,
             closed: closed_receiver,
         };
         let session = session_fn(handle.clone());
-        let id = session.id().to_owned();
-        let mut actor = SessionActor::new(session, id, socket_receiver, call_receiver, socket);
+        let mut actor = SessionActor::new(session, session_id, socket_receiver, call_receiver, socket);
 
         tokio::spawn(async move {
             closed_sender
-                .send(Some(Arc::new(actor.run().await)))
+                .send(Some(actor.run().await))
                 .unwrap();
         });
 
@@ -100,7 +98,7 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
         response
     }
 
-    pub async fn closed(&self) -> Arc<Result<Option<CloseFrame>, Error>> {
+    pub async fn closed(&self) -> Result<Option<CloseFrame>, Error> {
         let mut closed = self.closed.clone();
         loop {
             closed.changed().await.unwrap();
@@ -113,7 +111,7 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
 
 pub(crate) struct SessionActor<E: SessionExt> {
     pub extension: E,
-    pub id: E::ID,
+    id: E::ID,
     socket_receiver: mpsc::UnboundedReceiver<Message>,
     call_receiver: mpsc::UnboundedReceiver<E::Params>,
     socket: Socket,
@@ -128,8 +126,8 @@ impl<E: SessionExt> SessionActor<E> {
         socket: Socket,
     ) -> Self {
         Self {
-            extension,
             id,
+            extension,
             socket_receiver,
             call_receiver,
             socket,
@@ -137,45 +135,36 @@ impl<E: SessionExt> SessionActor<E> {
     }
 
     pub(crate) async fn run(&mut self) -> Result<Option<CloseFrame>, Error> {
-        let id = self.id.to_owned();
-        let result: Result<_, Error> = async move {
-            loop {
-                tokio::select! {
-                    Some(message) = self.socket_receiver.recv() => {
-                        self.socket.send(message.clone().into()).await;
-                        if let Message::Close(frame) = message {
-                            return Ok(frame)
-                        }
+        loop {
+            tokio::select! {
+                Some(message) = self.socket_receiver.recv() => {
+                    self.socket.send(message.clone().into()).await;
+                    if let Message::Close(frame) = message {
+                        return Ok(frame)
                     }
-                    Some(params) = self.call_receiver.recv() => {
-                        self.extension.call(params).await?;
-                    }
-                    message = self.socket.recv() => {
-                        match message {
-                            Some(message) => match message {
-                                Message::Text(text) => self.extension.text(text).await?,
-                                Message::Binary(bytes) => self.extension.binary(bytes).await?,
-                                Message::Close(frame) => {
-                                    return Ok(frame.map(CloseFrame::from))
-                                },
-                            }
-                            None => break
-                        };
-                    }
-                    else => break,
                 }
-            }
-            Ok(None)
-        }
-        .await;
+                Some(params) = self.call_receiver.recv() => {
+                    self.extension.call(params).await?;
+                }
+                message = self.socket.recv() => {
+                    match message {
+                        Some(Ok(message)) => match message {
+                            Message::Text(text) => self.extension.text(text).await?,
+                            Message::Binary(bytes) => self.extension.binary(bytes).await?,
+                            Message::Close(frame) => {
+                                return Ok(frame.map(CloseFrame::from))
+                            },
+                        }
+                        Some(Err(error)) => {
+                            tracing::error!(id = %self.id, "connection error: {error}");
 
-        match &result {
-            Ok(Some(CloseFrame { code, reason })) => {
-                tracing::info!(%id, ?code, %reason, "connection closed")
+                        }
+                        None => break
+                    };
+                }
+                else => break,
             }
-            Ok(None) => tracing::info!(%id, "connection closed"),
-            Err(err) => tracing::warn!(%id, "connection error: {err}"),
-        };
-        result
+        }
+        Ok(None)
     }
 }
