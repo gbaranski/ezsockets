@@ -77,7 +77,7 @@ impl ezsockets::SessionExt for EchoSession {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let (server, _) = Server::create(|_server| EchoServer {}).await;
+    let (server, _) = Server::create(|_server| EchoServer {});
     ezsockets::tungstenite::run(server, "127.0.0.1:8080")
         .await
         .unwrap();

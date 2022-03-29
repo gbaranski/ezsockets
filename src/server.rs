@@ -54,7 +54,7 @@ pub struct Server<P: std::fmt::Debug = ()> {
 }
 
 impl<P: std::fmt::Debug + Send> Server<P> {
-    pub async fn create<E: ServerExt<Params = P> + 'static>(
+    pub fn create<E: ServerExt<Params = P> + 'static>(
         create: impl FnOnce(Self) -> E,
     ) -> (Self, impl Future<Output = Result<(), BoxError>>) {
         let (connection_sender, connection_receiver) = mpsc::unbounded_channel();

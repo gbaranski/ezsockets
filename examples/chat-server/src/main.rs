@@ -111,8 +111,7 @@ async fn main() {
     let (server, _) = Server::create(|handle| ChatServer {
         sessions: HashMap::new(),
         handle,
-    })
-    .await;
+    });
     tokio::spawn({
         let server = server.clone();
         async move {
