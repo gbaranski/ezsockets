@@ -1,4 +1,4 @@
-use crate::BoxError;
+use crate::Error;
 use crate::CloseFrame;
 use crate::Message;
 use crate::Socket;
@@ -11,9 +11,9 @@ pub trait SessionExt: Send {
     type Params;
 
     fn id(&self) -> &Self::ID;
-    async fn text(&mut self, text: String) -> Result<(), BoxError>;
-    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), BoxError>;
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError>;
+    async fn text(&mut self, text: String) -> Result<(), Error>;
+    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
+    async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
 }
 
 #[derive(Debug)]
@@ -93,7 +93,7 @@ impl<E: SessionExt> SessionActor<E> {
 
     pub(crate) async fn run(&mut self) {
         let id = self.id.to_owned();
-        let result: Result<_, BoxError> = async move {
+        let result: Result<_, Error> = async move {
             loop {
                 tokio::select! {
                     Some(message) = self.socket_receiver.recv() => {

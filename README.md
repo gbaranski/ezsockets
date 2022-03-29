@@ -13,7 +13,6 @@ The code below represents simple client that redirects stdin to the WebSocket se
 
 ```rust
 use async_trait::async_trait;
-use ezsockets::BoxError;
 use ezsockets::ClientConfig;
 use std::io::BufRead;
 use url::Url;
@@ -24,17 +23,17 @@ struct Client {}
 impl ezsockets::ClientExt for Client {
     type Params = ();
 
-    async fn text(&mut self, text: String) -> Result<(), BoxError> {
+    async fn text(&mut self, text: String) -> Result<(), ezsockets::Error> {
         tracing::info!("received message: {text}");
         Ok(())
     }
 
-    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), BoxError> {
+    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
         tracing::info!("received bytes: {bytes:?}");
         Ok(())
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+    async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
         match params {
             () => {}
         }
@@ -73,7 +72,6 @@ The code below represents a simple echo server.
 
 ```rust
 use async_trait::async_trait;
-use ezsockets::BoxError;
 use ezsockets::Session;
 
 type SessionID = u16;
@@ -92,16 +90,16 @@ impl ezsockets::SessionExt for EchoSession {
         &self.id
     }
 
-    async fn text(&mut self, text: String) -> Result<(), BoxError> {
+    async fn text(&mut self, text: String) -> Result<(), ezsockets::Error> {
         self.handle.text(text).await; // Send response to the client
         Ok(())
     }
 
-    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), BoxError> {
+    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
         unimplemented!()
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+    async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
         match params {
             () => {}
         }
@@ -115,7 +113,6 @@ Then, we need to define a `Server` struct
 
 ```rust
 use async_trait::async_trait;
-use ezsockets::BoxError;
 use ezsockets::Server;
 use ezsockets::Session;
 use ezsockets::Socket;
@@ -134,7 +131,7 @@ impl ezsockets::ServerExt for EchoServer {
         socket: Socket,
         address: SocketAddr,
         _args: Self::Args,
-    ) -> Result<Session, BoxError> {
+    ) -> Result<Session, ezsockets::Error> {
         let handle = Session::create(
             |handle| EchoSession {
                 // use port as the SessionID, since we don't have any other meaningful information about the client
@@ -149,11 +146,11 @@ impl ezsockets::ServerExt for EchoServer {
     async fn disconnected(
         &mut self,
         _id: <Self::Session as ezsockets::SessionExt>::ID,
-    ) -> Result<(), BoxError> {
+    ) -> Result<(), ezsockets::Error> {
         Ok(())
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+    async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
         match params {
             () => {}
         };

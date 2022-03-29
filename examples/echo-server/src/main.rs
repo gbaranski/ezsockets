@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ezsockets::BoxError;
+use ezsockets::Error;
 use ezsockets::Server;
 use ezsockets::Session;
 use ezsockets::Socket;
@@ -20,7 +20,7 @@ impl ezsockets::ServerExt for EchoServer {
         socket: Socket,
         address: SocketAddr,
         _args: (),
-    ) -> Result<Session, BoxError> {
+    ) -> Result<Session, Error> {
         let handle = Session::create(
             |handle| EchoSession {
                 id: address.port(),
@@ -34,11 +34,11 @@ impl ezsockets::ServerExt for EchoServer {
     async fn disconnected(
         &mut self,
         _id: <Self::Session as ezsockets::SessionExt>::ID,
-    ) -> Result<(), BoxError> {
+    ) -> Result<(), Error> {
         Ok(())
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
         match params {
             () => {}
         };
@@ -59,16 +59,16 @@ impl ezsockets::SessionExt for EchoSession {
     fn id(&self) -> &Self::ID {
         &self.id
     }
-    async fn text(&mut self, text: String) -> Result<(), BoxError> {
+    async fn text(&mut self, text: String) -> Result<(), Error> {
         self.handle.text(text).await;
         Ok(())
     }
 
-    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), BoxError> {
+    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
         unimplemented!()
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
         match params {
             () => {}
         }

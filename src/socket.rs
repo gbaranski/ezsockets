@@ -1,4 +1,4 @@
-use crate::BoxError;
+use crate::Error;
 use futures::{SinkExt, StreamExt, TryStreamExt};
 use std::sync::Arc;
 use std::time::Instant;
@@ -170,7 +170,7 @@ impl From<Message> for RawMessage {
 struct SinkActor<M, S>
 where
     M: From<RawMessage>,
-    S: SinkExt<M, Error = BoxError> + Unpin,
+    S: SinkExt<M, Error = Error> + Unpin,
 {
     receiver: mpsc::UnboundedReceiver<RawMessage>,
     sink: S,
@@ -180,9 +180,9 @@ where
 impl<M, S> SinkActor<M, S>
 where
     M: From<RawMessage>,
-    S: SinkExt<M, Error = BoxError> + Unpin,
+    S: SinkExt<M, Error = Error> + Unpin,
 {
-    async fn run(&mut self) -> Result<(), BoxError> {
+    async fn run(&mut self) -> Result<(), Error> {
         while let Some(message) = self.receiver.recv().await {
             tracing::debug!("sending message: {:?}", message);
             self.sink.send(M::from(message)).await?;
@@ -197,10 +197,10 @@ pub struct Sink {
 }
 
 impl Sink {
-    pub fn new<M, S>(sink: S) -> (tokio::task::JoinHandle<Result<(), BoxError>>, Self)
+    pub fn new<M, S>(sink: S) -> (tokio::task::JoinHandle<Result<(), Error>>, Self)
     where
         M: From<RawMessage> + Send + 'static,
-        S: SinkExt<M, Error = BoxError> + Unpin + Send + 'static,
+        S: SinkExt<M, Error = Error> + Unpin + Send + 'static,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
         let mut actor = SinkActor {
@@ -229,7 +229,7 @@ impl Sink {
 struct StreamActor<M, S>
 where
     M: Into<RawMessage>,
-    S: StreamExt<Item = Result<M, BoxError>> + Unpin,
+    S: StreamExt<Item = Result<M, Error>> + Unpin,
 {
     sender: mpsc::UnboundedSender<Message>,
     stream: S,
@@ -239,9 +239,9 @@ where
 impl<M, S> StreamActor<M, S>
 where
     M: Into<RawMessage>,
-    S: StreamExt<Item = Result<M, BoxError>> + Unpin,
+    S: StreamExt<Item = Result<M, Error>> + Unpin,
 {
-    async fn run(&mut self) -> Result<(), BoxError> {
+    async fn run(&mut self) -> Result<(), Error> {
         while let Some(message) = self.stream.next().await.transpose()? {
             let message: RawMessage = message.into();
             tracing::debug!("received message: {:?}", message);
@@ -277,10 +277,10 @@ impl Stream {
     pub fn new<M, S>(
         stream: S,
         last_alive: Arc<Mutex<Instant>>,
-    ) -> (tokio::task::JoinHandle<Result<(), BoxError>>, Self)
+    ) -> (tokio::task::JoinHandle<Result<(), Error>>, Self)
     where
         M: Into<RawMessage> + std::fmt::Debug + Send + 'static,
-        S: StreamExt<Item = Result<M, BoxError>> + Unpin + Send + 'static,
+        S: StreamExt<Item = Result<M, Error>> + Unpin + Send + 'static,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
         let mut actor = StreamActor {
@@ -307,7 +307,7 @@ impl Socket {
     pub fn new<M, E: std::error::Error, S>(socket: S, config: Config) -> Self
     where
         M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,
-        E: Into<BoxError>,
+        E: Into<Error>,
         S: SinkExt<M, Error = E> + Unpin + StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
     {
         let last_alive = Instant::now();

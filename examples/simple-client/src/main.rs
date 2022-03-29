@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ezsockets::BoxError;
+use ezsockets::Error;
 use ezsockets::ClientConfig;
 use std::io::BufRead;
 use url::Url;
@@ -10,17 +10,17 @@ struct Client {}
 impl ezsockets::ClientExt for Client {
     type Params = ();
 
-    async fn text(&mut self, text: String) -> Result<(), BoxError> {
+    async fn text(&mut self, text: String) -> Result<(), Error> {
         tracing::info!("received message: {text}");
         Ok(())
     }
 
-    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), BoxError> {
+    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
         tracing::info!("received bytes: {bytes:?}");
         Ok(())
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
         match params {
             () => {}
         }

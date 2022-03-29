@@ -4,7 +4,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 use ezsockets::axum::Upgrade;
-use ezsockets::BoxError;
+use ezsockets::Error;
 use ezsockets::Server;
 use ezsockets::Session;
 use ezsockets::SessionExt;
@@ -33,7 +33,7 @@ impl ezsockets::ServerExt for ChatServer {
     type Params = ChatMessage;
     type Args = ();
 
-    async fn accept(&mut self, socket: Socket, _address: SocketAddr, _args: Self::Args) -> Result<Session, BoxError> {
+    async fn accept(&mut self, socket: Socket, _address: SocketAddr, _args: Self::Args) -> Result<Session, Error> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let handle = Session::create(
             |_| ChatSession {
@@ -49,12 +49,12 @@ impl ezsockets::ServerExt for ChatServer {
     async fn disconnected(
         &mut self,
         id: <Self::Session as SessionExt>::ID,
-    ) -> Result<(), BoxError> {
+    ) -> Result<(), Error> {
         assert!(self.sessions.remove(&id).is_some());
         Ok(())
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
         match params {
             ChatMessage::Broadcast { exceptions, text } => {
                 let sessions = self
@@ -84,7 +84,7 @@ impl SessionExt for ChatSession {
     fn id(&self) -> &Self::ID {
         &self.id
     }
-    async fn text(&mut self, text: String) -> Result<(), BoxError> {
+    async fn text(&mut self, text: String) -> Result<(), Error> {
         self.server
             .call(ChatMessage::Broadcast {
                 exceptions: vec![self.id],
@@ -94,11 +94,11 @@ impl SessionExt for ChatSession {
         Ok(())
     }
 
-    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), BoxError> {
+    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
         unimplemented!()
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
         match params {
             () => {}
         };

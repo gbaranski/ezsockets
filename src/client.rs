@@ -1,5 +1,5 @@
 use crate::socket::Config;
-use crate::BoxError;
+use crate::Error;
 use crate::Message;
 use crate::Socket;
 use async_trait::async_trait;
@@ -62,9 +62,9 @@ impl ClientConfig {
 pub trait ClientExt: Send {
     type Params: std::fmt::Debug + Send;
 
-    async fn text(&mut self, text: String) -> Result<(), BoxError>;
-    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), BoxError>;
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError>;
+    async fn text(&mut self, text: String) -> Result<(), Error>;
+    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
+    async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
 }
 
 #[derive(Debug)]
@@ -107,7 +107,7 @@ pub async fn connect<E: ClientExt + 'static>(
     config: ClientConfig,
 ) -> (
     Client<E::Params>,
-    impl Future<Output = Result<(), BoxError>>,
+    impl Future<Output = Result<(), Error>>,
 ) {
     let (socket_sender, socket_receiver) = mpsc::unbounded_channel();
     let (call_sender, call_receiver) = mpsc::unbounded_channel();
@@ -143,7 +143,7 @@ struct ClientActor<E: ClientExt> {
 }
 
 impl<E: ClientExt> ClientActor<E> {
-    async fn run(&mut self) -> Result<(), BoxError> {
+    async fn run(&mut self) -> Result<(), Error> {
         loop {
             tokio::select! {
                 Some(message) = self.socket_receiver.recv() => {

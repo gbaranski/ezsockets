@@ -1,4 +1,4 @@
-use crate::BoxError;
+use crate::Error;
 use crate::Session;
 use crate::SessionExt;
 use crate::Socket;
@@ -18,7 +18,7 @@ where
     E: Send + 'static,
     <E::Session as SessionExt>::ID: Send,
 {
-    async fn run(&mut self) -> Result<(), BoxError> {
+    async fn run(&mut self) -> Result<(), Error> {
         tracing::info!("starting server");
         loop {
             tokio::select! {
@@ -47,10 +47,10 @@ pub trait ServerExt: Send {
         socket: Socket,
         address: SocketAddr,
         args: Self::Args,
-    ) -> Result<Session, BoxError>;
+    ) -> Result<Session, Error>;
     async fn disconnected(&mut self, id: <Self::Session as SessionExt>::ID)
-        -> Result<(), BoxError>;
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError>;
+        -> Result<(), Error>;
+    async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
 }
 
 #[derive(Debug)]
@@ -68,7 +68,7 @@ impl<P: std::fmt::Debug, A: std::fmt::Debug> From<Server<P, A>> for mpsc::Unboun
 impl<P: std::fmt::Debug + Send, A: std::fmt::Debug + Send> Server<P, A> {
     pub fn create<E: ServerExt<Params = P, Args = A> + 'static>(
         create: impl FnOnce(Self) -> E,
-    ) -> (Self, impl Future<Output = Result<(), BoxError>>) {
+    ) -> (Self, impl Future<Output = Result<(), Error>>) {
         let (connection_sender, connection_receiver) = mpsc::unbounded_channel();
         let (call_sender, call_receiver) = mpsc::unbounded_channel();
         let handle = Self {
@@ -83,7 +83,7 @@ impl<P: std::fmt::Debug + Send, A: std::fmt::Debug + Send> Server<P, A> {
         };
         let future = tokio::spawn(async move {
             actor.run().await?;
-            Ok::<_, BoxError>(())
+            Ok::<_, Error>(())
         });
         let future = async move { future.await.unwrap() };
         (handle, future)

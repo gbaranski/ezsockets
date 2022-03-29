@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ezsockets::BoxError;
+use ezsockets::Error;
 use ezsockets::Server;
 use ezsockets::Session;
 use ezsockets::Socket;
@@ -33,7 +33,7 @@ impl ezsockets::ServerExt for ChatServer {
         socket: Socket,
         _address: SocketAddr,
         _args: Self::Args,
-    ) -> Result<Session, BoxError> {
+    ) -> Result<Session, Error> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let handle = Session::create(
             |_handle| SessionActor {
@@ -49,12 +49,12 @@ impl ezsockets::ServerExt for ChatServer {
     async fn disconnected(
         &mut self,
         id: <Self::Session as ezsockets::SessionExt>::ID,
-    ) -> Result<(), BoxError> {
+    ) -> Result<(), Error> {
         assert!(self.sessions.remove(&id).is_some());
         Ok(())
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
         match params {
             Message::Broadcast { exceptions, text } => {
                 let sessions = self
@@ -85,7 +85,7 @@ impl ezsockets::SessionExt for SessionActor {
         &self.id
     }
 
-    async fn text(&mut self, text: String) -> Result<(), BoxError> {
+    async fn text(&mut self, text: String) -> Result<(), Error> {
         self.server
             .call(Message::Broadcast {
                 exceptions: vec![self.id],
@@ -95,11 +95,11 @@ impl ezsockets::SessionExt for SessionActor {
         Ok(())
     }
 
-    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), BoxError> {
+    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
         unimplemented!()
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), BoxError> {
+    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
         match params {
             () => {}
         }

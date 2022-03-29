@@ -103,7 +103,7 @@ impl From<Message> for tungstenite::Message {
 cfg_if::cfg_if! {
     if #[cfg(feature = "server")] {
         use crate::Server;
-        use crate::BoxError;
+        use crate::Error;
         use crate::Socket;
         use crate::socket;
 
@@ -114,12 +114,12 @@ cfg_if::cfg_if! {
             server: Server<P, A>,
             address: SA,
             get_args: impl Fn(&mut Socket) -> GetArgsFut
-        ) -> Result<(), BoxError> 
+        ) -> Result<(), Error> 
         where
             P: std::fmt::Debug,
             A: std::fmt::Debug,
             SA: ToSocketAddrs,
-            GetArgsFut: Future<Output = Result<A, BoxError>>
+            GetArgsFut: Future<Output = Result<A, Error>>
         {
             let listener = TcpListener::bind(address).await?;
             loop {
