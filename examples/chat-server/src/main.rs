@@ -26,11 +26,13 @@ struct ChatServer {
 impl ezsockets::ServerExt for ChatServer {
     type Params = Message;
     type Session = SessionActor;
+    type Args = ();
 
     async fn accept(
         &mut self,
         socket: Socket,
         _address: SocketAddr,
+        _args: Self::Args,
     ) -> Result<Session, BoxError> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let handle = Session::create(
@@ -115,7 +117,7 @@ async fn main() {
     tokio::spawn({
         let server = server.clone();
         async move {
-            ezsockets::tungstenite::run(server, "127.0.0.1:8080")
+            ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_| async move { Ok(()) })
                 .await
                 .unwrap();
         }

@@ -125,13 +125,15 @@ struct EchoServer {}
 
 #[async_trait]
 impl ezsockets::ServerExt for EchoServer {
-    type Params = ();
     type Session = EchoSession;
+    type Params = ();
+    type Args = ();
 
     async fn accept(
         &mut self,
         socket: Socket,
         address: SocketAddr,
+        _args: Self::Args,
     ) -> Result<Session, BoxError> {
         let handle = Session::create(
             |handle| EchoSession {
@@ -181,7 +183,7 @@ impl ezsockets::ServerExt for MyServer {
 #[tokio::main]
 async fn main() {
     let server = ezsockets::Server::create(|_| MyServer {});
-    ezsockets::tungstenite::run(server, "127.0.0.1:8080")
+    ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_socket| async move { Ok(()) })
         .await
         .unwrap();
 }
@@ -221,7 +223,7 @@ async fn websocket_handler(
     ezsocket: Upgrade,
 ) -> impl IntoResponse {
     ezsocket.on_upgrade(|socket, address| async move {
-        server.accept(socket, address).await;
+        server.accept(socket, address, ()).await;
     })
 }
 ```

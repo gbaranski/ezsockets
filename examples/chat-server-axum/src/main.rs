@@ -29,10 +29,11 @@ struct ChatServer {
 
 #[async_trait]
 impl ezsockets::ServerExt for ChatServer {
-    type Params = ChatMessage;
     type Session = ChatSession;
+    type Params = ChatMessage;
+    type Args = ();
 
-    async fn accept(&mut self, socket: Socket, _address: SocketAddr) -> Result<Session, BoxError> {
+    async fn accept(&mut self, socket: Socket, _address: SocketAddr, _args: Self::Args) -> Result<Session, BoxError> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let handle = Session::create(
             |_| ChatSession {
@@ -145,6 +146,6 @@ async fn websocket_handler(
     ezsocket: Upgrade,
 ) -> impl IntoResponse {
     ezsocket.on_upgrade(|socket, address| async move {
-        server.accept(socket, address).await;
+        server.accept(socket, address, ()).await;
     })
 }

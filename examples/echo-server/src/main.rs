@@ -13,11 +13,13 @@ struct EchoServer {}
 impl ezsockets::ServerExt for EchoServer {
     type Params = ();
     type Session = EchoSession;
+    type Args = ();
 
     async fn accept(
         &mut self,
         socket: Socket,
         address: SocketAddr,
+        _args: (),
     ) -> Result<Session, BoxError> {
         let handle = Session::create(
             |handle| EchoSession {
@@ -78,7 +80,7 @@ impl ezsockets::SessionExt for EchoSession {
 async fn main() {
     tracing_subscriber::fmt::init();
     let (server, _) = Server::create(|_server| EchoServer {});
-    ezsockets::tungstenite::run(server, "127.0.0.1:8080")
+    ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_| async move { Ok(()) })
         .await
         .unwrap();
 }

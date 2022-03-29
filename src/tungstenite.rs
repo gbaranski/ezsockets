@@ -2,6 +2,7 @@ use crate::socket::RawMessage;
 use crate::CloseCode;
 use crate::CloseFrame;
 use crate::Message;
+use futures::Future;
 use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
 
@@ -109,16 +110,24 @@ cfg_if::cfg_if! {
         use tokio::net::TcpListener;
         use tokio::net::ToSocketAddrs;
 
-        pub async fn run<P: std::fmt::Debug, A: ToSocketAddrs>(
-            server: Server<P>,
-            address: A,
-        ) -> Result<(), BoxError> {
+        pub async fn run<P, A, SA, GetArgsFut>(
+            server: Server<P, A>,
+            address: SA,
+            get_args: impl Fn(&mut Socket) -> GetArgsFut
+        ) -> Result<(), BoxError> 
+        where
+            P: std::fmt::Debug,
+            A: std::fmt::Debug,
+            SA: ToSocketAddrs,
+            GetArgsFut: Future<Output = Result<A, BoxError>>
+        {
             let listener = TcpListener::bind(address).await?;
             loop {
                 let (socket, address) = listener.accept().await?;
                 let socket = tokio_tungstenite::accept_async(socket).await?;
-                let socket = Socket::new(socket, socket::Config::default());
-                server.accept(socket, address).await;
+                let mut socket = Socket::new(socket, socket::Config::default());
+                let args = get_args(&mut socket).await?;
+                server.accept(socket, address, args).await;
             }
         }
     }
