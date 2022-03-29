@@ -4,6 +4,7 @@ use crate::SessionExt;
 use crate::Socket;
 use async_trait::async_trait;
 use futures::Future;
+use tokio::sync::oneshot;
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
 
@@ -100,6 +101,18 @@ impl<P: std::fmt::Debug, A: std::fmt::Debug> Server<P, A> {
 
     pub async fn call(&self, params: P) {
         self.calls.send(params).map_err(|_| ()).unwrap();
+    }
+
+    /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
+    /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
+    pub async fn call_with<R: std::fmt::Debug>(&self, f: impl FnOnce(oneshot::Sender<R>) -> P) -> R {
+        let (sender, receiver) = oneshot::channel();
+        let params = f(sender);
+
+        self.calls.send(params).unwrap();
+        let response = receiver.await.unwrap();
+
+        response
     }
 }
 

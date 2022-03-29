@@ -4,6 +4,7 @@ use crate::Message;
 use crate::Socket;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 #[async_trait]
 pub trait SessionExt: Send {
@@ -63,6 +64,18 @@ impl<P: std::fmt::Debug + Send> Session<P> {
     /// Calls a method on the session
     pub async fn call(&self, params: P) {
         self.calls.send(params).unwrap();
+    }
+
+    /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
+    /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
+    pub async fn call_with<R: std::fmt::Debug>(&self, f: impl FnOnce(oneshot::Sender<R>) -> P) -> R {
+        let (sender, receiver) = oneshot::channel();
+        let params = f(sender);
+
+        self.calls.send(params).unwrap();
+        let response = receiver.await.unwrap();
+
+        response
     }
 }
 
