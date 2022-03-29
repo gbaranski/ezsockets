@@ -184,7 +184,7 @@ where
 {
     async fn run(&mut self) -> Result<(), Error> {
         while let Some(message) = self.receiver.recv().await {
-            tracing::debug!("sending message: {:?}", message);
+            tracing::trace!("sending message: {:?}", message);
             self.sink.send(M::from(message)).await?;
         }
         Ok(())
@@ -244,7 +244,7 @@ where
     async fn run(&mut self) -> Result<(), Error> {
         while let Some(message) = self.stream.next().await.transpose()? {
             let message: RawMessage = message.into();
-            tracing::debug!("received message: {:?}", message);
+            tracing::trace!("received message: {:?}", message);
             let message = match message {
                 RawMessage::Text(text) => Message::Text(text),
                 RawMessage::Binary(bytes) => Message::Binary(bytes),
@@ -257,7 +257,7 @@ where
                     let latency = SystemTime::now()
                         .duration_since(UNIX_EPOCH + timestamp)
                         .unwrap();
-                    tracing::debug!("latency: {}ms", latency.as_millis());
+                    tracing::trace!("latency: {}ms", latency.as_millis());
                     continue;
                 }
                 RawMessage::Close(_) => return Ok(()),
