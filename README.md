@@ -4,6 +4,7 @@ Have you ever struggle with creating a WebSocket server or a client in Rust? Thi
 
 - High level abstraction of WebSocket, handling Ping/Pong from both Client and Server.
 - Use of traits to allow declarative and event-based programming.
+- Automatic reconnection of WebSocket Client.
 
 ## Client
 
@@ -34,9 +35,7 @@ impl ezsockets::ClientExt for Client {
     }
 
     async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-        match params {
-            () => {}
-        }
+        let () = params;
         Ok(())
     }
 }
@@ -44,14 +43,12 @@ impl ezsockets::ClientExt for Client {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let url = format!("ws://127.0.0.1:8080");
-    let url = Url::parse(&url).unwrap();
+    let url = Url::parse("ws://localhost:8080/websocket").unwrap();
     let config = ClientConfig::new(url);
-    let (handle, future) = ezsockets::connect(|_| Client {}, config).await;
+    let (handle, future) = ezsockets::connect(|_client| Client { }, config).await;
     tokio::spawn(async move {
         future.await.unwrap();
     });
-
     let stdin = std::io::stdin();
     let lines = stdin.lock().lines();
     for line in lines {
@@ -60,6 +57,7 @@ async fn main() {
         handle.text(line).await;
     }
 }
+
 ```
 
 
@@ -84,6 +82,7 @@ struct EchoSession {
 #[async_trait]
 impl ezsockets::SessionExt for EchoSession {
     type ID = SessionID;
+    type Args = ();
     type Params = ();
 
     fn id(&self) -> &Self::ID {
@@ -100,9 +99,7 @@ impl ezsockets::SessionExt for EchoSession {
     }
 
     async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-        match params {
-            () => {}
-        }
+        let () = params;
         Ok(())
     }
 }
@@ -124,23 +121,16 @@ struct EchoServer {}
 impl ezsockets::ServerExt for EchoServer {
     type Session = EchoSession;
     type Params = ();
-    type Args = ();
 
     async fn accept(
         &mut self,
         socket: Socket,
         address: SocketAddr,
-        _args: Self::Args,
+        _args: (),
     ) -> Result<Session, ezsockets::Error> {
-        let handle = Session::create(
-            |handle| EchoSession {
-                // use port as the SessionID, since we don't have any other meaningful information about the client
-                id: address.port(),
-                handle,
-            },
-            socket,
-        );
-        Ok(handle)
+        let id = address.port();
+        let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
+        Ok(session)
     }
 
     async fn disconnected(
@@ -151,9 +141,7 @@ impl ezsockets::ServerExt for EchoServer {
     }
 
     async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-        match params {
-            () => {}
-        };
+        let () = params;
         Ok(())
     }
 }
@@ -170,16 +158,16 @@ That's all! Now we can start the server. Take a look at the available [Server ba
 ### [`tokio-tungstenite`](https://github.com/snapview/tokio-tungstenite)
 
 ```rust
-struct MyServer {}
+struct EchoServer {}
 
 #[async_trait]
-impl ezsockets::ServerExt for MyServer {
+impl ezsockets::ServerExt for EchoServer {
     // ...
 }
 
 #[tokio::main]
 async fn main() {
-    let server = ezsockets::Server::create(|_| MyServer {});
+    let server = ezsockets::Server::create(|_| EchoServer {});
     ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_socket| async move { Ok(()) })
         .await
         .unwrap();
@@ -189,16 +177,16 @@ async fn main() {
 ### [`axum`](https://github.com/tokio-rs/axum)
 
 ```rust
-struct MyServer {}
+struct EchoServer {}
 
 #[async_trait]
-impl ezsockets::ServerExt for MyServer {
+impl ezsockets::ServerExt for EchoServer {
     // ...
 }
 
 #[tokio::main]
 async fn main() {
-    let server = ezsockets::Server::create(|_| MyServer {});
+    let server = ezsockets::Server::create(|_| EchoServer {});
     let app = axum::Router::new()
         .route("/websocket", get(websocket_handler))
         .layer(Extension(server.clone()));
@@ -208,7 +196,7 @@ async fn main() {
     tokio::spawn(async move {
         tracing::debug!("listening on {}", address);
         axum::Server::bind(&address)
-            .serve(app.into_make_service_with_connect_info::<SocketAddr, _>())
+            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
             .await
             .unwrap();
     });
