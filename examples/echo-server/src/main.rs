@@ -11,8 +11,8 @@ struct EchoServer {}
 
 #[async_trait]
 impl ezsockets::ServerExt for EchoServer {
-    type Params = ();
     type Session = EchoSession;
+    type Params = ();
 
     async fn accept(
         &mut self,
@@ -52,6 +52,7 @@ impl ezsockets::SessionExt for EchoSession {
     fn id(&self) -> &Self::ID {
         &self.id
     }
+
     async fn text(&mut self, text: String) -> Result<(), Error> {
         self.handle.text(text).await;
         Ok(())
