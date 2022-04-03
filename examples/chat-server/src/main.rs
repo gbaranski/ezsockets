@@ -65,11 +65,7 @@ impl ezsockets::ServerExt for ChatServer {
             .rooms
             .values_mut()
             .find_map(|ids| {
-                if let Some(n) = ids.iter().position(|v| id == *v) {
-                    Some((ids, n))
-                } else {
-                    None
-                }
+                ids.iter().position(|v| id == *v).map(|n| (ids, n))
             })
             .expect("could not find session in any room");
         ids.remove(n);
@@ -105,11 +101,7 @@ impl ezsockets::ServerExt for ChatServer {
                     .rooms
                     .values_mut()
                     .find_map(|ids| {
-                        if let Some(n) = ids.iter().position(|v| id == *v) {
-                            Some((ids, n))
-                        } else {
-                            None
-                        }
+                        ids.iter().position(|v| id == *v).map(|n| (ids, n))
                     })
                     .expect("could not find session in any room");
                 ids.remove(n);
@@ -155,7 +147,7 @@ impl ezsockets::SessionExt for SessionActor {
 
     async fn text(&mut self, text: String) -> Result<(), Error> {
         tracing::info!("received: {text}");
-        if text.starts_with("/") {
+        if text.starts_with('/') {
             let mut args = text.split_whitespace();
             let command = args.next().unwrap();
             if command == "/join" {
