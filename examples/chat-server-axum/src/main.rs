@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::io::BufRead;
 use std::net::SocketAddr;
 
-type SessionID = u8;
+type SessionID = u16;
 type Session = ezsockets::Session<SessionID, ()>;
 
 #[derive(Debug)]
