@@ -64,9 +64,7 @@ impl ezsockets::ServerExt for ChatServer {
         let (ids, n) = self
             .rooms
             .values_mut()
-            .find_map(|ids| {
-                ids.iter().position(|v| id == *v).map(|n| (ids, n))
-            })
+            .find_map(|ids| ids.iter().position(|v| id == *v).map(|n| (ids, n)))
             .expect("could not find session in any room");
         ids.remove(n);
         Ok(())
@@ -100,9 +98,7 @@ impl ezsockets::ServerExt for ChatServer {
                 let (ids, n) = self
                     .rooms
                     .values_mut()
-                    .find_map(|ids| {
-                        ids.iter().position(|v| id == *v).map(|n| (ids, n))
-                    })
+                    .find_map(|ids| ids.iter().position(|v| id == *v).map(|n| (ids, n)))
                     .expect("could not find session in any room");
                 ids.remove(n);
                 if let Some(ids) = self.rooms.get_mut(&room) {
