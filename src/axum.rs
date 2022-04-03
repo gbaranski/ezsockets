@@ -38,7 +38,6 @@ where
     async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
         let ConnectInfo(address) = req
             .extensions()
-            .unwrap()
             .get::<ConnectInfo<SocketAddr>>()
             .expect("Axum Server must be created with `axum::Router::into_make_service_with_connect_info::<SocketAddr, _>()`")
             .to_owned();

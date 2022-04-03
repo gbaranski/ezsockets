@@ -128,7 +128,7 @@ async fn main() {
     tokio::spawn(async move {
         tracing::debug!("listening on {}", address);
         axum::Server::bind(&address)
-            .serve(app.into_make_service_with_connect_info::<SocketAddr, _>())
+            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
             .await
             .unwrap();
     });
