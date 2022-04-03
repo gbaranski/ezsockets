@@ -16,10 +16,7 @@ type Session = ezsockets::Session<SessionID, ()>;
 
 #[derive(Debug)]
 enum ChatMessage {
-    Broadcast {
-        text: String,
-        exceptions: Vec<SessionID>,
-    },
+    Send { from: SessionID, text: String },
 }
 
 struct ChatServer {
@@ -61,13 +58,11 @@ impl ezsockets::ServerExt for ChatServer {
 
     async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
         match params {
-            ChatMessage::Broadcast { exceptions, text } => {
-                let sessions = self
-                    .sessions
-                    .iter()
-                    .filter(|(id, _)| !exceptions.contains(id));
+            ChatMessage::Send { text, from } => {
+                let sessions = self.sessions.iter().filter(|(id, _)| from != **id);
+                let text = format!("from {from}: {text}");
                 for (id, handle) in sessions {
-                    tracing::info!("broadcasting {text} to {id}");
+                    tracing::info!("sending {text} to {id}");
                     handle.text(text.clone()).await;
                 }
             }
@@ -93,8 +88,8 @@ impl ezsockets::SessionExt for ChatSession {
     async fn text(&mut self, text: String) -> Result<(), Error> {
         tracing::info!("received: {text}");
         self.server
-            .call(ChatMessage::Broadcast {
-                exceptions: vec![self.id],
+            .call(ChatMessage::Send {
+                from: self.id,
                 text,
             })
             .await;
@@ -138,9 +133,9 @@ async fn main() {
     for line in lines {
         let line = line.unwrap();
         server
-            .call(ChatMessage::Broadcast {
+            .call(ChatMessage::Send {
                 text: line,
-                exceptions: vec![],
+                from: SessionID::MAX, // reserve some ID for the server
             })
             .await;
     }
