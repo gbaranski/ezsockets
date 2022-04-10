@@ -8,8 +8,6 @@ Have you ever struggle with creating a WebSocket server or a client in Rust? Thi
 
 ## Client
 
-#### NOTE: Enable `client` feature to use it.
-
 The code below represents simple client that redirects stdin to the WebSocket server.
 
 ```rust
@@ -62,8 +60,6 @@ async fn main() {
 
 
 ## Server
-
-#### NOTE: Enable `server-<backend>` feature to use it.
 
 To create a simple echo server, you'll need to define a `Session` struct.
 The code below represents a simple echo server.
@@ -157,6 +153,11 @@ That's all! Now we can start the server. Take a look at the available [Server ba
 
 ### [`tokio-tungstenite`](https://github.com/snapview/tokio-tungstenite)
 
+Enable using
+```toml
+ezsockets = { version = "0.3", features = ["tungstenite"] }
+```
+
 ```rust
 struct EchoServer {}
 
@@ -175,6 +176,11 @@ async fn main() {
 ```
 
 ### [`axum`](https://github.com/tokio-rs/axum)
+
+Enable using
+```toml
+ezsockets = { version = "0.3", features = ["axum"] }
+```
 
 ```rust
 struct EchoServer {}
