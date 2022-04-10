@@ -40,3 +40,11 @@ tracing-subscriber = "0.3.9"
 
 [workspace]
 members = ["examples/chat-client", "examples/chat-server", "examples/chat-server-axum", "examples/echo-server", "examples/simple-client"]
+
+[[test]]
+name = "axum"
+required-features = ["axum"]
+
+[[test]]
+name = "tungstenite"
+required-features = ["tungstenite"]
