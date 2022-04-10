@@ -69,12 +69,12 @@ pub trait ClientExt: Send {
 }
 
 #[derive(Debug)]
-pub struct Client<P: std::fmt::Debug> {
+pub struct Client<E: ClientExt> {
     socket: mpsc::UnboundedSender<Message>,
-    calls: mpsc::UnboundedSender<P>,
+    calls: mpsc::UnboundedSender<E::Params>,
 }
 
-impl<P: std::fmt::Debug> Clone for Client<P> {
+impl<E: ClientExt> Clone for Client<E> {
     fn clone(&self) -> Self {
         Self {
             socket: self.socket.clone(),
@@ -83,13 +83,13 @@ impl<P: std::fmt::Debug> Clone for Client<P> {
     }
 }
 
-impl<P: std::fmt::Debug> From<Client<P>> for mpsc::UnboundedSender<P> {
-    fn from(client: Client<P>) -> Self {
+impl<E: ClientExt> From<Client<E>> for mpsc::UnboundedSender<E::Params> {
+    fn from(client: Client<E>) -> Self {
         client.calls
     }
 }
 
-impl<P: std::fmt::Debug> Client<P> {
+impl<E: ClientExt> Client<E> {
     pub async fn text(&self, text: String) {
         self.socket.send(Message::Text(text)).unwrap();
     }
@@ -98,7 +98,7 @@ impl<P: std::fmt::Debug> Client<P> {
         self.socket.send(Message::Binary(bytes)).unwrap();
     }
 
-    pub async fn call(&self, message: P) {
+    pub async fn call(&self, message: E::Params) {
         self.calls.send(message).unwrap();
     }
 
@@ -106,7 +106,7 @@ impl<P: std::fmt::Debug> Client<P> {
     /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
     pub async fn call_with<R: std::fmt::Debug>(
         &self,
-        f: impl FnOnce(oneshot::Sender<R>) -> P,
+        f: impl FnOnce(oneshot::Sender<R>) -> E::Params,
     ) -> R {
         let (sender, receiver) = oneshot::channel();
         let params = f(sender);
@@ -119,9 +119,9 @@ impl<P: std::fmt::Debug> Client<P> {
 }
 
 pub async fn connect<E: ClientExt + 'static>(
-    client_fn: impl FnOnce(Client<E::Params>) -> E,
+    client_fn: impl FnOnce(Client<E>) -> E,
     config: ClientConfig,
-) -> (Client<E::Params>, impl Future<Output = Result<(), Error>>) {
+) -> (Client<E>, impl Future<Output = Result<(), Error>>) {
     let (socket_sender, socket_receiver) = mpsc::unbounded_channel();
     let (call_sender, call_receiver) = mpsc::unbounded_channel();
     let handle = Client {
