@@ -130,5 +130,23 @@ cfg_if::cfg_if! {
                 server.accept(socket, address, args).await;
             }
         }
+
+        pub async fn run_on<E, GetArgsFut>(
+            server: Server<E>,
+            listener: TcpListener,
+            get_args: impl Fn(&mut Socket) -> GetArgsFut
+        ) -> Result<(), Error>
+        where
+            E: ServerExt + 'static,
+            GetArgsFut: Future<Output = Result<<E::Session as SessionExt>::Args, Error>>
+        {
+            loop {
+                let (socket, address) = listener.accept().await?;
+                let socket = tokio_tungstenite::accept_async(socket).await?;
+                let mut socket = Socket::new(socket, socket::Config::default());
+                let args = get_args(&mut socket).await?;
+                server.accept(socket, address, args).await;
+            }
+        }
     }
 }
