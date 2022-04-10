@@ -106,7 +106,11 @@ impl ezsockets::ServerExt for ChatServer {
                     session.text(text.clone()).await;
                 }
             }
-            Message::Join { id, room, respond_to } => {
+            Message::Join {
+                id,
+                room,
+                respond_to,
+            } => {
                 tracing::info!("joining {id} to {room}");
                 let (ids, n) = self
                     .rooms
@@ -165,7 +169,13 @@ impl ezsockets::SessionExt for SessionActor {
                 let room = args.next().expect("missing <room> argument").to_string();
                 tracing::info!("moving {} to {room}", self.id);
                 self.room = room.clone();
-                self.server.call_with(|respond_to| Message::Join { id: self.id, room, respond_to }).await;
+                self.server
+                    .call_with(|respond_to| Message::Join {
+                        id: self.id,
+                        room,
+                        respond_to,
+                    })
+                    .await;
             } else {
                 tracing::error!("unrecognized command: {text}");
             }
@@ -269,6 +279,11 @@ pub async fn test(alice: Client<ChatClient>, bob: Client<ChatClient>) {
         alice_messages.recv().await.unwrap(),
         "User with ID: 1 just joined abc room".to_string()
     );
-    alice.call(ChatClientMessage::Send("Hi in the new room".to_string())).await;
-    assert_eq!(bob_messages.recv().await.unwrap(), "Hi in the new room".to_string());
+    alice
+        .call(ChatClientMessage::Send("Hi in the new room".to_string()))
+        .await;
+    assert_eq!(
+        bob_messages.recv().await.unwrap(),
+        "Hi in the new room".to_string()
+    );
 }
