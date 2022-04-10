@@ -8,7 +8,7 @@ pub use socket::Sink;
 pub use socket::Socket;
 pub use socket::Stream;
 
-#[cfg(feature = "server-axum")]
+#[cfg(feature = "axum")]
 pub mod axum;
 
 #[cfg(feature = "tokio-tungstenite")]

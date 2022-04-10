@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use axum_crate as axum;
 
 use crate::CloseCode;
 use crate::CloseFrame;
@@ -14,6 +14,7 @@ use axum::extract::ConnectInfo;
 use axum::extract::FromRequest;
 use axum::extract::RequestParts;
 use axum::response::Response;
+use std::net::SocketAddr;
 
 /// Extractor for establishing WebSocket connections.
 ///
