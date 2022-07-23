@@ -25,24 +25,27 @@ impl ezsockets::ServerExt for CounterServer {
     ) -> Result<Session, Error> {
         let id = address.port();
         let session = Session::create(
-            |handle| CounterSession {
-                id,
-                handle,
-                counter: 0,
+            |handle| {
+                let counting_task = tokio::spawn({
+                    let session = handle.clone();
+                    async move {
+                        loop {
+                            session.call(Message::Increment).await;
+                            session.call(Message::Share).await;
+                            tokio::time::sleep(INTERVAL).await;
+                        }
+                    }
+                });
+                CounterSession {
+                    id,
+                    handle,
+                    counter: 0,
+                    counting_task,
+                }
             },
             id,
             socket,
         );
-        tokio::spawn({
-            let session = session.clone();
-            async move {
-                while session.alive() {
-                    session.call(Message::Increment).await;
-                    session.call(Message::Share).await;
-                    tokio::time::sleep(INTERVAL).await;
-                }
-            }
-        });
         Ok(session)
     }
 
@@ -63,8 +66,14 @@ struct CounterSession {
     handle: Session,
     id: SessionID,
     counter: usize,
+    counting_task: tokio::task::JoinHandle<()>,
 }
 
+impl Drop for CounterSession {
+    fn drop(&mut self) {
+        self.counting_task.abort();
+    }
+} 
 #[derive(Debug)]
 enum Message {
     // increment current counter by 1
