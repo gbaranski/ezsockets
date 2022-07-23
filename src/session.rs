@@ -168,7 +168,6 @@ impl<E: SessionExt> SessionActor<E> {
                         }
                         Some(Err(error)) => {
                             tracing::error!(id = %self.id, "connection error: {error}");
-
                         }
                         None => break
                     };
