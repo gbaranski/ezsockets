@@ -84,19 +84,30 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
         closed.await.unwrap()
     }
 
+    /// Checks if the Session is still alive, if so you can proceed sending calls or messages.
+    pub fn alive(&self) -> bool {
+        self.socket.is_closed() == false && self.calls.is_closed() == false
+    }
+
     /// Sends a Text message to the server
     pub async fn text(&self, text: String) {
-        self.socket.send(Message::Text(text)).unwrap();
+        self.socket
+            .send(Message::Text(text))
+            .unwrap_or_else(|_| panic!("Session::text {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Sends a Binary message to the server
     pub async fn binary(&self, bytes: Vec<u8>) {
-        self.socket.send(Message::Binary(bytes)).unwrap();
+        self.socket
+            .send(Message::Binary(bytes))
+            .unwrap_or_else(|_| panic!("Session::binary {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Calls a method on the session
     pub async fn call(&self, params: P) {
-        self.calls.send(params).unwrap();
+        self.calls
+            .send(params)
+            .unwrap_or_else(|_| panic!("Session::call {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
@@ -163,7 +174,6 @@ impl<E: SessionExt> SessionActor<E> {
                         }
                         Some(Err(error)) => {
                             tracing::error!(id = %self.id, "connection error: {error}");
-
                         }
                         None => break
                     };
@@ -174,3 +184,6 @@ impl<E: SessionExt> SessionActor<E> {
         Ok(None)
     }
 }
+
+
+const PANIC_MESSAGE_UNHANDLED_CLOSE: &str = "should not be called after Session close. Try handling Server::disconnect or Session::drop, also you can check whether the Session is alive using Session::alive";
