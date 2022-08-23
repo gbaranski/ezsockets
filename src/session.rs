@@ -86,7 +86,7 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
 
     /// Checks if the Session is still alive, if so you can proceed sending calls or messages.
     pub fn alive(&self) -> bool {
-        self.socket.is_closed() == false && self.calls.is_closed() == false
+        !self.socket.is_closed() && !self.calls.is_closed()
     }
 
     /// Sends a Text message to the server
