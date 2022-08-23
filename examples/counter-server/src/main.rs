@@ -73,7 +73,7 @@ impl Drop for CounterSession {
     fn drop(&mut self) {
         self.counting_task.abort();
     }
-} 
+}
 #[derive(Debug)]
 enum Message {
     // increment current counter by 1

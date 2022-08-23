@@ -185,5 +185,4 @@ impl<E: SessionExt> SessionActor<E> {
     }
 }
 
-
 const PANIC_MESSAGE_UNHANDLED_CLOSE: &str = "should not be called after Session close. Try handling Server::disconnect or Session::drop, also you can check whether the Session is alive using Session::alive";
