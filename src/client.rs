@@ -112,9 +112,7 @@ impl<E: ClientExt> Client<E> {
         let params = f(sender);
 
         self.calls.send(params).unwrap();
-        let response = receiver.await.unwrap();
-
-        response
+        receiver.await.unwrap()
     }
 }
 

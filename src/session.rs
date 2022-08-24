@@ -120,9 +120,7 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
         let params = f(sender);
 
         self.calls.send(params).unwrap();
-        let response = receiver.await.unwrap();
-
-        response
+        receiver.await.unwrap()
     }
 }
 
