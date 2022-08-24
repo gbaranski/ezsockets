@@ -149,8 +149,7 @@ impl<E: ServerExt> Server<E> {
             })
             .map_err(|_| ())
             .unwrap();
-        let session_id = receiver.await.unwrap();
-        session_id
+        receiver.await.unwrap()
     }
 
     pub(crate) async fn disconnected(
@@ -178,9 +177,7 @@ impl<E: ServerExt> Server<E> {
         let params = f(sender);
 
         self.calls.send(params).unwrap();
-        let response = receiver.await.unwrap();
-
-        response
+        receiver.await.unwrap()
     }
 }
 
