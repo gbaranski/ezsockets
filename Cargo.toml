@@ -8,7 +8,11 @@ readme = "README.md"
 repository = "https://github.com/gbaranski/ezsockets"
 license = "MIT"
 keywords = ["websocket", "networking", "async"]
-categories = ["asynchronous", "network-programming", "web-programming::websocket"]
+categories = [
+    "asynchronous",
+    "network-programming",
+    "web-programming::websocket",
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -21,7 +25,9 @@ tokio = { version = "1.17.0", features = ["sync", "rt", "macros", "time"] }
 tracing = "0.1.31"
 url = "2.2.2"
 cfg-if = "1.0.0"
-axum_crate = { package = "axum", version = "0.5.1", features = ["ws"], optional = true }
+axum_crate = { package = "axum", version = "0.5.1", features = [
+    "ws",
+], optional = true }
 tokio-tungstenite = { version = "0.17.1", optional = true }
 serde = { version = "1.0.145", optional = true }
 serde_json = { version = "1.0.86", optional = true }
@@ -42,7 +48,13 @@ tokio = { version = "1.17.0", features = ["full"] }
 tracing-subscriber = "0.3.9"
 
 [workspace]
-members = ["examples/chat-client", "examples/chat-server", "examples/chat-server-axum", "examples/echo-server", "examples/simple-client"]
+members = [
+    "examples/chat-client",
+    "examples/chat-server",
+    "examples/chat-server-axum",
+    "examples/echo-server",
+    "examples/simple-client",
+]
 
 [[test]]
 name = "axum"
