@@ -94,6 +94,20 @@ impl<E: ClientExt> Client<E> {
         self.socket.send(Message::Text(text)).unwrap();
     }
 
+    #[cfg(feature = "json")]
+    pub async fn json<T: serde::Serialize>(&self, value: T) {
+        let text = serde_json::to_string(&value).unwrap();
+        self.socket.send(Message::Text(text)).unwrap();
+    }
+    
+    #[cfg(feature = "json")]
+    pub async fn try_json<T: serde::Serialize>(&self, value: T) -> Result<(), Error> {
+        let text = serde_json::to_string(&value)?;
+        self.socket.send(Message::Text(text)).unwrap();
+        Ok(())
+    }
+
+
     pub async fn binary(&self, bytes: Vec<u8>) {
         self.socket.send(Message::Binary(bytes)).unwrap();
     }
