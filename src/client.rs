@@ -68,6 +68,53 @@ pub trait ClientExt: Send {
     async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
 }
 
+#[cfg(feature = "json")]
+#[async_trait]
+pub trait JsonClientExt<'a, P, D>
+where
+    Self: Send,
+    P: std::fmt::Debug + Send,
+    D: serde::Deserialize<'a>,
+{
+    async fn json(&mut self, data: D) -> Result<(), Error>;
+    async fn call(&mut self, params: P) -> Result<(), Error>;
+}
+
+#[cfg(feature = "json")]
+#[async_trait]
+impl<'a, P, D> ClientExt for dyn JsonClientExt<'a, P, D> 
+where
+    P: std::fmt::Debug + Send + 'a,
+    D: serde::Deserialize<'a> + Send,
+{
+    type Params = P;
+
+    async fn text(&mut self, text: String) -> Result<(), Error> {
+        // let data: D = serde_json::from_str(&text)?;
+        // self.json(data).await
+        todo!()
+    }
+
+    async fn binary(&mut self, _: Vec<u8>) -> Result<(), Error> {
+        return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "binary not supported").into());
+    }
+
+    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
+        self.call(params).await
+    }
+    // fn text< 'life0, 'async_trait>(& 'life0 mut self,text:String) ->  core::pin::Pin<Box<dyn core::future::Future<Output = Result<(),Error> > + core::marker::Send+ 'async_trait> >where 'life0: 'async_trait,Self: 'async_trait {
+    //     todo!()
+    // }
+
+    // fn binary< 'life0, 'async_trait>(& 'life0 mut self,bytes:Vec<u8>) ->  core::pin::Pin<Box<dyn core::future::Future<Output = Result<(),Error> > + core::marker::Send+ 'async_trait> >where 'life0: 'async_trait,Self: 'async_trait {
+    //     todo!()
+    // }
+
+    // fn call< 'life0, 'async_trait>(& 'life0 mut self,params:Self::Params) ->  core::pin::Pin<Box<dyn core::future::Future<Output = Result<(),Error> > + core::marker::Send+ 'async_trait> >where 'life0: 'async_trait,Self: 'async_trait {
+    //     todo!()
+    // }
+}
+
 #[derive(Debug)]
 pub struct Client<E: ClientExt> {
     socket: mpsc::UnboundedSender<Message>,

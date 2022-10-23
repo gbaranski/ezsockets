@@ -54,6 +54,8 @@ members = [
     "examples/chat-server-axum",
     "examples/echo-server",
     "examples/simple-client",
+    "examples/json-client",
+    "examples/json-server",
 ]
 
 [[test]]

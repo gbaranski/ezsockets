@@ -22,6 +22,9 @@ cfg_if::cfg_if! {
         pub use client::ClientConfig;
         pub use client::ClientExt;
         pub use client::Client;
+        
+        #[cfg(feature = "json")]
+        pub use client::JsonClientExt;
     }
 }
 
