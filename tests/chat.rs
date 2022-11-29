@@ -103,7 +103,7 @@ impl ezsockets::ServerExt for ChatServer {
                         .join(",")
                 );
                 for session in sessions {
-                    session.text(text.clone()).await;
+                    session.text(text.clone());
                 }
             }
             Message::Join {
@@ -134,9 +134,7 @@ impl ezsockets::ServerExt for ChatServer {
 
                 respond_to.send(()).unwrap();
                 for session in sessions {
-                    session
-                        .text(format!("User with ID: {id} just joined {room} room"))
-                        .await;
+                    session.text(format!("User with ID: {id} just joined {room} room"));
                 }
             }
         };
@@ -180,13 +178,11 @@ impl ezsockets::SessionExt for SessionActor {
                 tracing::error!("unrecognized command: {text}");
             }
         } else {
-            self.server
-                .call(Message::Send {
-                    text,
-                    from: self.id,
-                    room: self.room.clone(),
-                })
-                .await;
+            self.server.call(Message::Send {
+                text,
+                from: self.id,
+                room: self.room.clone(),
+            });
         }
         Ok(())
     }

@@ -30,8 +30,8 @@ impl ezsockets::ServerExt for CounterServer {
                     let session = handle.clone();
                     async move {
                         loop {
-                            session.call(Message::Increment).await;
-                            session.call(Message::Share).await;
+                            session.call(Message::Increment);
+                            session.call(Message::Share);
                             tokio::time::sleep(INTERVAL).await;
                         }
                     }
@@ -93,7 +93,7 @@ impl ezsockets::SessionExt for CounterSession {
     }
 
     async fn text(&mut self, text: String) -> Result<(), Error> {
-        self.handle.text(text).await;
+        self.handle.text(text);
         Ok(())
     }
 
@@ -104,7 +104,7 @@ impl ezsockets::SessionExt for CounterSession {
     async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
         match params {
             Message::Increment => self.counter += 1,
-            Message::Share => self.handle.text(format!("counter: {}", self.counter)).await,
+            Message::Share => self.handle.text(format!("counter: {}", self.counter)),
         };
         Ok(())
     }

@@ -54,7 +54,7 @@ impl ezsockets::SessionExt for EchoSession {
     }
 
     async fn text(&mut self, text: String) -> Result<(), Error> {
-        self.handle.text(text).await;
+        self.handle.text(text);
         Ok(())
     }
 

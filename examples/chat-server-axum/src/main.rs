@@ -63,7 +63,7 @@ impl ezsockets::ServerExt for ChatServer {
                 let text = format!("from {from}: {text}");
                 for (id, handle) in sessions {
                     tracing::info!("sending {text} to {id}");
-                    handle.text(text.clone()).await;
+                    handle.text(text.clone());
                 }
             }
         };
@@ -87,12 +87,10 @@ impl ezsockets::SessionExt for ChatSession {
     }
     async fn text(&mut self, text: String) -> Result<(), Error> {
         tracing::info!("received: {text}");
-        self.server
-            .call(ChatMessage::Send {
-                from: self.id,
-                text,
-            })
-            .await;
+        self.server.call(ChatMessage::Send {
+            from: self.id,
+            text,
+        });
         Ok(())
     }
 
@@ -132,12 +130,10 @@ async fn main() {
     let lines = stdin.lock().lines();
     for line in lines {
         let line = line.unwrap();
-        server
-            .call(ChatMessage::Send {
-                text: line,
-                from: SessionID::MAX, // reserve some ID for the server
-            })
-            .await;
+        server.call(ChatMessage::Send {
+            text: line,
+            from: SessionID::MAX, // reserve some ID for the server
+        });
     }
 }
 

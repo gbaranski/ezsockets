@@ -163,7 +163,7 @@ impl<E: ServerExt> Server<E> {
             .unwrap();
     }
 
-    pub async fn call(&self, params: E::Params) {
+    pub fn call(&self, params: E::Params) {
         self.calls.send(params).map_err(|_| ()).unwrap();
     }
 

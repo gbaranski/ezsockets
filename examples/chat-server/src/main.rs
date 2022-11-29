@@ -91,7 +91,7 @@ impl ezsockets::ServerExt for ChatServer {
                         .join(",")
                 );
                 for session in sessions {
-                    session.text(text.clone()).await;
+                    session.text(text.clone());
                 }
             }
             Message::Join { id, room } => {
@@ -115,9 +115,7 @@ impl ezsockets::ServerExt for ChatServer {
                     .map(|id| self.sessions.get(id).unwrap());
 
                 for session in sessions {
-                    session
-                        .text(format!("User with ID: {id} just joined {room} room"))
-                        .await;
+                    session.text(format!("User with ID: {id} just joined {room} room"));
                 }
             }
         };
@@ -150,18 +148,16 @@ impl ezsockets::SessionExt for SessionActor {
                 let room = args.next().expect("missing <room> argument").to_string();
                 tracing::info!("moving {} to {room}", self.id);
                 self.room = room.clone();
-                self.server.call(Message::Join { id: self.id, room }).await;
+                self.server.call(Message::Join { id: self.id, room });
             } else {
                 tracing::error!("unrecognized command: {text}");
             }
         } else {
-            self.server
-                .call(Message::Send {
-                    text,
-                    from: self.id,
-                    room: self.room.clone(),
-                })
-                .await;
+            self.server.call(Message::Send {
+                text,
+                from: self.id,
+                room: self.room.clone(),
+            });
         }
         Ok(())
     }
