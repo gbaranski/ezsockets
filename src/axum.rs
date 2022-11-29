@@ -1,4 +1,5 @@
 use axum_crate as axum;
+use http::Request;
 
 use crate::CloseCode;
 use crate::CloseFrame;
@@ -12,7 +13,6 @@ use axum::extract::ws;
 use axum::extract::ws::rejection::*;
 use axum::extract::ConnectInfo;
 use axum::extract::FromRequest;
-use axum::extract::RequestParts;
 use axum::response::Response;
 use std::net::SocketAddr;
 
@@ -30,20 +30,21 @@ pub struct Upgrade {
 }
 
 #[async_trait]
-impl<B> FromRequest<B> for Upgrade
+impl<S, B> FromRequest<S, B> for Upgrade
 where
-    B: Send,
+    S: Send + Sync,
+    B: Send + 'static,
 {
     type Rejection = WebSocketUpgradeRejection;
 
-    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+    async fn from_request(req: Request<B>, state: &S) -> Result<Self, Self::Rejection> {
         let ConnectInfo(address) = req
             .extensions()
             .get::<ConnectInfo<SocketAddr>>()
             .expect("Axum Server must be created with `axum::Router::into_make_service_with_connect_info::<SocketAddr, _>()`")
             .to_owned();
         Ok(Self {
-            ws: ws::WebSocketUpgrade::from_request(req).await?,
+            ws: ws::WebSocketUpgrade::from_request(req, state).await?,
             address,
         })
     }
