@@ -1,14 +1,14 @@
 # ezsockets
 
-Have you ever struggle with creating a WebSocket server or a client in Rust? This crate is for you.
+Creating a WebSocket server or a client in Rust can be troublesome. This crate facilitates this process by providing:
 
-- High level abstraction of WebSocket, handling Ping/Pong from both Client and Server.
-- Use of traits to allow declarative and event-based programming.
+- High-level abstraction of WebSocket, handling Ping/Pong from both Client and Server.
+- Traits to allow declarative and event-based programming.
 - Automatic reconnection of WebSocket Client.
 
 ## Client
 
-The code below represents simple client that redirects stdin to the WebSocket server.
+The code below represents a simple client that redirects stdin to the WebSocket server.
 
 ```rust
 use async_trait::async_trait;
@@ -61,7 +61,7 @@ async fn main() {
 
 ## Server
 
-To create a simple echo server, you'll need to define a `Session` struct.
+To create a simple echo server, we need to define a `Session` struct.
 The code below represents a simple echo server.
 
 ```rust
