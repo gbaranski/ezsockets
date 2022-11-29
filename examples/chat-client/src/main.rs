@@ -39,6 +39,6 @@ async fn main() {
     for line in lines {
         let line = line.unwrap();
         tracing::info!("sending {line}");
-        handle.text(line).await;
+        handle.text(line);
     }
 }

@@ -52,7 +52,7 @@ async fn main() {
     for line in lines {
         let line = line.unwrap();
         tracing::info!("sending {line}");
-        handle.text(line).await;
+        handle.text(line);
     }
 }
 
@@ -86,7 +86,7 @@ impl ezsockets::SessionExt for EchoSession {
     }
 
     async fn text(&mut self, text: String) -> Result<(), ezsockets::Error> {
-        self.handle.text(text).await; // Send response to the client
+        self.handle.text(text); // Send response to the client
         Ok(())
     }
 

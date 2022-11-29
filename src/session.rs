@@ -90,21 +90,21 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
     }
 
     /// Sends a Text message to the server
-    pub async fn text(&self, text: String) {
+    pub fn text(&self, text: String) {
         self.socket
             .send(Message::Text(text))
             .unwrap_or_else(|_| panic!("Session::text {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Sends a Binary message to the server
-    pub async fn binary(&self, bytes: Vec<u8>) {
+    pub fn binary(&self, bytes: Vec<u8>) {
         self.socket
             .send(Message::Binary(bytes))
             .unwrap_or_else(|_| panic!("Session::binary {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Calls a method on the session
-    pub async fn call(&self, params: P) {
+    pub fn call(&self, params: P) {
         self.calls
             .send(params)
             .unwrap_or_else(|_| panic!("Session::call {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
