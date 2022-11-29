@@ -90,15 +90,15 @@ impl<E: ClientExt> From<Client<E>> for mpsc::UnboundedSender<E::Params> {
 }
 
 impl<E: ClientExt> Client<E> {
-    pub async fn text(&self, text: String) {
+    pub fn text(&self, text: String) {
         self.socket.send(Message::Text(text)).unwrap();
     }
 
-    pub async fn binary(&self, bytes: Vec<u8>) {
+    pub fn binary(&self, bytes: Vec<u8>) {
         self.socket.send(Message::Binary(bytes)).unwrap();
     }
 
-    pub async fn call(&self, message: E::Params) {
+    pub fn call(&self, message: E::Params) {
         self.calls.send(message).unwrap();
     }
 

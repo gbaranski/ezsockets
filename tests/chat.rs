@@ -243,7 +243,7 @@ impl ezsockets::ClientExt for ChatClient {
 
     async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
         match params {
-            ChatClientMessage::Send(message) => self.handle.text(message).await,
+            ChatClientMessage::Send(message) => self.handle.text(message),
             ChatClientMessage::Subscribe(respond_to) => {
                 respond_to.send(self.messages.subscribe()).unwrap()
             }
@@ -256,32 +256,26 @@ pub async fn test(alice: Client<ChatClient>, bob: Client<ChatClient>) {
     let mut bob_messages = bob.call_with(ChatClientMessage::Subscribe).await;
     let mut alice_messages = alice.call_with(ChatClientMessage::Subscribe).await;
     alice
-        .call(ChatClientMessage::Send("Hi Bob!".to_string()))
-        .await;
+        .call(ChatClientMessage::Send("Hi Bob!".to_string()));
     alice
-        .call(ChatClientMessage::Send("Cya Bob!".to_string()))
-        .await;
+        .call(ChatClientMessage::Send("Cya Bob!".to_string()));
     assert_eq!(bob_messages.recv().await.unwrap(), "Hi Bob!".to_string());
     assert_eq!(bob_messages.recv().await.unwrap(), "Cya Bob!".to_string());
     alice
-        .call(ChatClientMessage::Send(format!("/join abc")))
-        .await;
+        .call(ChatClientMessage::Send(format!("/join abc")));
 
     alice
-        .call(ChatClientMessage::Send("Is there anyone?".to_string())) // no
-        .await;
+        .call(ChatClientMessage::Send("Is there anyone?".to_string())); // no
 
     tokio::time::sleep(Duration::from_millis(100)).await; // sorry for this hack, but i can't find a better solution right now
-    bob.call(ChatClientMessage::Send(format!("/join abc")))
-        .await;
+    bob.call(ChatClientMessage::Send(format!("/join abc")));
 
     assert_eq!(
         alice_messages.recv().await.unwrap(),
         "User with ID: 1 just joined abc room".to_string()
     );
     alice
-        .call(ChatClientMessage::Send("Hi in the new room".to_string()))
-        .await;
+        .call(ChatClientMessage::Send("Hi in the new room".to_string()));
     assert_eq!(
         bob_messages.recv().await.unwrap(),
         "Hi in the new room".to_string()
