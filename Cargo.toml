@@ -37,6 +37,8 @@ axum = ["server", "axum_crate"]
 [dev-dependencies]
 tokio = { version = "1.17.0", features = ["full"] }
 tracing-subscriber = "0.3.9"
+criterion = "0.4"
+rand = "0.8.5"
 
 [workspace]
 members = ["examples/chat-client", "examples/chat-server", "examples/chat-server-axum", "examples/echo-server", "examples/simple-client", "examples/counter-server"]
@@ -48,3 +50,8 @@ required-features = ["axum"]
 [[test]]
 name = "tungstenite"
 required-features = ["tungstenite"]
+
+
+[[bench]]
+name = "my_benchmark"
+harness = false
