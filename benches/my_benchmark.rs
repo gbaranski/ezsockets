@@ -1,6 +1,6 @@
 use std::{
     net::{TcpListener, TcpStream},
-    thread::spawn,
+    thread::spawn, thread::sleep, time::Duration,
 };
 
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
@@ -26,15 +26,11 @@ fn bench(b: &mut Bencher, client: &mut WebSocket<MaybeTlsStream<TcpStream>>) {
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-
+    tracing_subscriber::fmt::init();
     let mut group = c.benchmark_group("read latency");
 
     let port = 4321;
-    let task = spawn(move || {
+    let thread = spawn(move || {
         let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
         tungstenite_server::run(listener)
     });
@@ -44,12 +40,25 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         .0;
     group.bench_function("tungstenite server", |b| bench(b, &mut client));
     client.close(None).unwrap();
+    thread.join().unwrap();
+
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
 
     let task = runtime.spawn(async move {
         let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
         ezsockets_server::run(listener).await;
     });
-    // group.bench_function("ezsockets server", |b| bench(b, port));
+    sleep(Duration::from_millis(1000));
+    let mut client = tungstenite::connect(format!("ws://127.0.0.1:{}", port))
+        .unwrap()
+        .0;
+    group.bench_function("ezsockets server", |b| bench(b, &mut client));
+    client.close(None).unwrap();
     task.abort();
 }
 
