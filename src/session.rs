@@ -152,6 +152,7 @@ impl<E: SessionExt> SessionActor<E> {
     pub(crate) async fn run(&mut self) -> Result<Option<CloseFrame>, Error> {
         loop {
             tokio::select! {
+                biased;
                 Some(message) = self.socket_receiver.recv() => {
                     self.socket.send(message.clone()).await;
                     if let Message::Close(frame) = message {
