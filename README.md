@@ -168,7 +168,7 @@ impl ezsockets::ServerExt for EchoServer {
 
 #[tokio::main]
 async fn main() {
-    let server = ezsockets::Server::create(|_| EchoServer {});
+    let (server, _) = ezsockets::Server::create(|_| EchoServer {});
     ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_socket| async move { Ok(()) })
         .await
         .unwrap();
@@ -192,7 +192,7 @@ impl ezsockets::ServerExt for EchoServer {
 
 #[tokio::main]
 async fn main() {
-    let server = ezsockets::Server::create(|_| EchoServer {});
+    let (server, _) = ezsockets::Server::create(|_| EchoServer {});
     let app = axum::Router::new()
         .route("/websocket", get(websocket_handler))
         .layer(Extension(server.clone()));
