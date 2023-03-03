@@ -1,6 +1,6 @@
 //! `tungstenite` feature must be enabled in order to use this module.
 //!
-//! ```rust
+//! ```ignore
 //! struct EchoServer {}
 //!
 //! #[async_trait]

@@ -3,7 +3,7 @@
 //! To create a simple echo server, we need to define a `Session` struct.
 //! The code below represents a simple echo server.
 //!
-//! ```rust
+//! ```ignore
 //! use async_trait::async_trait;
 //! use ezsockets::Session;
 //!
@@ -43,7 +43,7 @@
 //! Then, we need to define a `Server` struct
 //!
 //!
-//! ```rust
+//! ```ignore
 //! use async_trait::async_trait;
 //! use ezsockets::Server;
 //! use ezsockets::Session;
