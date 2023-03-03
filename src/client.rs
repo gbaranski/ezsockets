@@ -11,7 +11,7 @@ use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 use url::Url;
 
-const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
+pub const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
 
 #[derive(Debug)]
 pub struct ClientConfig {
