@@ -37,6 +37,11 @@ impl ClientConfig {
         );
         self
     }
+    
+    pub fn reconnect_interval(mut self, reconnect_interval: Duration) -> Self {
+        self.reconnect_interval = Some(reconnect_interval);
+        self
+    }
 
     fn connect_http_request(&self) -> http::Request<()> {
         let mut http_request = http::Request::builder()
