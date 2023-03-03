@@ -6,6 +6,8 @@ Creating a WebSocket server or a client in Rust can be troublesome. This crate f
 - Traits to allow declarative and event-based programming.
 - Automatic reconnection of WebSocket Client.
 
+View the full documentation at [docs.rs/ezsockets](http://docs.rs/ezsockets)
+
 ## Client
 
 The code below represents a simple client that redirects stdin to the WebSocket server.
