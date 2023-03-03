@@ -4,6 +4,7 @@ use crate::Error;
 use crate::Message;
 use crate::Socket;
 use async_trait::async_trait;
+use base64::Engine;
 use std::future::Future;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -31,7 +32,7 @@ impl ClientConfig {
     }
 
     pub fn basic(mut self, username: &str, password: &str) -> Self {
-        let credentials = base64::encode(format!("{username}:{password}"));
+        let credentials = base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
         self.headers.insert(
             http::header::AUTHORIZATION,
             http::HeaderValue::from_str(&format!("Basic {credentials}")).unwrap(),
