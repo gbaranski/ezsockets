@@ -157,7 +157,7 @@ That's all! Now we can start the server. Take a look at the available [Server ba
 
 Enable using
 ```toml
-ezsockets = { version = "0.3", features = ["tungstenite"] }
+ezsockets = { version = "0.4", features = ["tungstenite"] }
 ```
 
 ```rust
@@ -181,7 +181,7 @@ async fn main() {
 
 Enable using
 ```toml
-ezsockets = { version = "0.3", features = ["axum"] }
+ezsockets = { version = "0.4", features = ["axum"] }
 ```
 
 ```rust
