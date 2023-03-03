@@ -1,3 +1,42 @@
+//! `axum` feature must be enabled in order to use this module.
+//!
+//! ```rust
+//! struct EchoServer {}
+//!
+//! #[async_trait]
+//! impl ezsockets::ServerExt for EchoServer {
+//!     // ...
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let (server, _) = ezsockets::Server::create(|_| EchoServer {});
+//!     let app = axum::Router::new()
+//!         .route("/websocket", get(websocket_handler))
+//!         .layer(Extension(server.clone()));
+//!
+//!     let address = std::net::SocketAddr::from(([127, 0, 0, 1], 8080));
+//!
+//!     tokio::spawn(async move {
+//!         tracing::debug!("listening on {}", address);
+//!         axum::Server::bind(&address)
+//!             .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+//!             .await
+//!             .unwrap();
+//!     });
+//!
+//! }
+//!
+//! async fn websocket_handler(
+//!     Extension(server): Extension<ezsockets::Server>,
+//!     ezsocket: Upgrade,
+//! ) -> impl IntoResponse {
+//!     ezsocket.on_upgrade(|socket, address| async move {
+//!         server.accept(socket, address, ()).await;
+//!     })
+//! }
+//! ```
+
 use axum_crate as axum;
 use http::Request;
 
@@ -19,7 +58,7 @@ use std::net::SocketAddr;
 /// Extractor for establishing WebSocket connections.
 ///
 /// Note: This extractor requires the request method to be `GET` so it should
-/// always be used with [`get`](crate::routing::get). Requests with other methods will be
+/// always be used with [`get`](axum::routing::get). Requests with other methods will be
 /// rejected.
 ///
 /// See the [module docs](self) for an example.

@@ -1,3 +1,23 @@
+//! `tungstenite` feature must be enabled in order to use this module.
+//!
+//! ```rust
+//! struct EchoServer {}
+//!
+//! #[async_trait]
+//! impl ezsockets::ServerExt for EchoServer {
+//!     // ...
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let (server, _) = ezsockets::Server::create(|_| EchoServer {});
+//!     ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_socket| async move { Ok(()) })
+//!         .await
+//!         .unwrap();
+//! }
+//! ```
+//!
+
 use crate::socket::RawMessage;
 use crate::CloseCode;
 use crate::CloseFrame;
