@@ -66,6 +66,13 @@ pub trait ClientExt: Send {
     async fn text(&mut self, text: String) -> Result<(), Error>;
     async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
     async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
+
+    /// Called when the connection is closed.
+    /// 
+    /// For reconnections, use `ClientConfig::reconnect_interval`.
+    async fn close(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -177,6 +184,7 @@ impl<E: ClientExt> ClientActor<E> {
                                 Message::Text(text) => self.client.text(text).await?,
                                 Message::Binary(bytes) => self.client.binary(bytes).await?,
                                 Message::Close(_frame) => {
+                                    self.client.close().await?;
                                     self.reconnect().await;
                                 }
                             };
@@ -185,6 +193,7 @@ impl<E: ClientExt> ClientActor<E> {
                             tracing::error!("connection error: {error}");
                         }
                         None => {
+                            self.client.close().await?;
                             self.reconnect().await;
                         }
                     };
