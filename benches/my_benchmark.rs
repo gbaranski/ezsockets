@@ -1,6 +1,8 @@
 use std::{
     net::{TcpListener, TcpStream},
-    thread::spawn, thread::sleep, time::Duration,
+    thread::sleep,
+    thread::spawn,
+    time::Duration,
 };
 
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
@@ -41,7 +43,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("tungstenite server", |b| bench(b, &mut client));
     client.close(None).unwrap();
     thread.join().unwrap();
-
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)

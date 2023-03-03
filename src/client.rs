@@ -1,5 +1,5 @@
-use crate::CloseFrame;
 use crate::socket::Config;
+use crate::CloseFrame;
 use crate::Error;
 use crate::Message;
 use crate::Socket;
