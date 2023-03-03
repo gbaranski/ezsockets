@@ -1,3 +1,4 @@
+use crate::CloseFrame;
 use crate::socket::Config;
 use crate::Error;
 use crate::Message;
@@ -113,6 +114,11 @@ impl<E: ClientExt> Client<E> {
 
         self.calls.send(params).unwrap();
         receiver.await.unwrap()
+    }
+
+    /// Disconnects client from the server.
+    pub async fn close(self, frame: Option<CloseFrame>) {
+        self.socket.send(Message::Close(frame)).unwrap();
     }
 }
 

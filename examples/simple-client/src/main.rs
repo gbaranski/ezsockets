@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 use ezsockets::ClientConfig;
+use ezsockets::CloseCode;
+use ezsockets::CloseFrame;
 use ezsockets::Error;
 use std::io::BufRead;
 use url::Url;
@@ -41,6 +43,16 @@ async fn main() {
     let lines = stdin.lock().lines();
     for line in lines {
         let line = line.unwrap();
+        if line == "exit" {
+            tracing::info!("exiting...");
+            handle
+                .close(Some(CloseFrame {
+                    code: CloseCode::Normal,
+                    reason: "adios!".to_string(),
+                }))
+                .await;
+            return;
+        }
         tracing::info!("sending {line}");
         handle.text(line);
     }
