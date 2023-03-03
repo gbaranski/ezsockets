@@ -72,6 +72,11 @@ pub trait ClientExt: Send {
     async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
     async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
     
+    /// Called when the client successfully connected(or reconnected).
+    async fn connected(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+    
     /// Called when the connection is closed.
     /// 
     /// For reconnections, use `ClientConfig::reconnect_interval`.
@@ -138,11 +143,14 @@ pub async fn connect<E: ClientExt + 'static>(
         socket: socket_sender,
         calls: call_sender,
     };
-    let client = client_fn(handle.clone());
+    let mut client = client_fn(handle.clone());
     let future = tokio::spawn(async move {
         let http_request = config.connect_http_request();
         tracing::info!("connecting to {}...", config.url);
         let (stream, _) = tokio_tungstenite::connect_async(http_request).await?;
+        if let Err(err) = client.connected().await {
+            tracing::error!("calling `connected()` failed due to {}", err);
+        }
         let socket = Socket::new(stream, Config::default());
         tracing::info!("connected to {}", config.url);
         let mut actor = ClientActor {
@@ -224,6 +232,9 @@ impl<E: ClientExt> ClientActor<E> {
             match result {
                 Ok((socket, _)) => {
                     tracing::info!("successfully reconnected");
+                    if let Err(err) = self.client.connected().await {
+                        tracing::error!("calling `connected()` failed due to {}", err);
+                    }
                     let socket = Socket::new(socket, Config::default());
                     self.socket = socket;
                     self.heartbeat = Instant::now();
