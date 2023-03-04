@@ -64,7 +64,7 @@ use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 use url::Url;
 
-const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
+pub const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
 
 #[derive(Debug)]
 pub struct ClientConfig {
@@ -89,6 +89,11 @@ impl ClientConfig {
             http::header::AUTHORIZATION,
             http::HeaderValue::from_str(&format!("Basic {credentials}")).unwrap(),
         );
+        self
+    }
+    
+    pub fn reconnect_interval(mut self, reconnect_interval: Duration) -> Self {
+        self.reconnect_interval = Some(reconnect_interval);
         self
     }
 
@@ -120,6 +125,18 @@ pub trait ClientExt: Send {
     async fn text(&mut self, text: String) -> Result<(), Error>;
     async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
     async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
+    
+    /// Called when the client successfully connected(or reconnected).
+    async fn connected(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+    
+    /// Called when the connection is closed.
+    /// 
+    /// For reconnections, use `ClientConfig::reconnect_interval`.
+    async fn closed(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -185,11 +202,14 @@ pub async fn connect<E: ClientExt + 'static>(
         socket: socket_sender,
         calls: call_sender,
     };
-    let client = client_fn(handle.clone());
+    let mut client = client_fn(handle.clone());
     let future = tokio::spawn(async move {
         let http_request = config.connect_http_request();
         tracing::info!("connecting to {}...", config.url);
         let (stream, _) = tokio_tungstenite::connect_async(http_request).await?;
+        if let Err(err) = client.connected().await {
+            tracing::error!("calling `connected()` failed due to {}", err);
+        }
         let socket = Socket::new(stream, Config::default());
         tracing::info!("connected to {}", config.url);
         let mut actor = ClientActor {
@@ -236,6 +256,7 @@ impl<E: ClientExt> ClientActor<E> {
                                 Message::Text(text) => self.client.text(text).await?,
                                 Message::Binary(bytes) => self.client.binary(bytes).await?,
                                 Message::Close(_frame) => {
+                                    self.client.closed().await?;
                                     self.reconnect().await;
                                 }
                             };
@@ -244,6 +265,7 @@ impl<E: ClientExt> ClientActor<E> {
                             tracing::error!("connection error: {error}");
                         }
                         None => {
+                            self.client.closed().await?;
                             self.reconnect().await;
                         }
                     };
@@ -269,6 +291,9 @@ impl<E: ClientExt> ClientActor<E> {
             match result {
                 Ok((socket, _)) => {
                     tracing::info!("successfully reconnected");
+                    if let Err(err) = self.client.connected().await {
+                        tracing::error!("calling `connected()` failed due to {}", err);
+                    }
                     let socket = Socket::new(socket, Config::default());
                     self.socket = socket;
                     self.heartbeat = Instant::now();
