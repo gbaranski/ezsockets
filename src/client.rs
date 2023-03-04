@@ -91,7 +91,7 @@ impl ClientConfig {
         );
         self
     }
-    
+
     pub fn reconnect_interval(mut self, reconnect_interval: Duration) -> Self {
         self.reconnect_interval = Some(reconnect_interval);
         self
@@ -125,14 +125,14 @@ pub trait ClientExt: Send {
     async fn text(&mut self, text: String) -> Result<(), Error>;
     async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
     async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
-    
+
     /// Called when the client successfully connected(or reconnected).
     async fn connected(&mut self) -> Result<(), Error> {
         Ok(())
     }
-    
+
     /// Called when the connection is closed.
-    /// 
+    ///
     /// For reconnections, use `ClientConfig::reconnect_interval`.
     async fn closed(&mut self) -> Result<(), Error> {
         Ok(())
