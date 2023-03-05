@@ -32,8 +32,7 @@
 //! #[tokio::main]
 //! async fn main() {
 //!     tracing_subscriber::fmt::init();
-//!     let url = Url::parse("ws://localhost:8080/websocket").unwrap();
-//!     let config = ClientConfig::new(url);
+//!     let config = ClientConfig::new("ws://localhost:8080/websocket");
 //!     let (handle, future) = ezsockets::connect(|_client| Client { }, config).await;
 //!     tokio::spawn(async move {
 //!         future.await.unwrap();
@@ -56,6 +55,9 @@ use crate::Message;
 use crate::Socket;
 use async_trait::async_trait;
 use base64::Engine;
+use http::header::HeaderName;
+use http::HeaderValue;
+use std::fmt;
 use std::future::Future;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -70,11 +72,18 @@ pub const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
 pub struct ClientConfig {
     url: Url,
     reconnect_interval: Option<Duration>,
-    headers: http::HeaderMap<http::HeaderValue>,
+    headers: http::HeaderMap,
 }
 
 impl ClientConfig {
-    pub fn new(url: Url) -> Self {
+    /// If invalid URL is passed, this function will panic.
+    /// In order to handle invalid URL, parse URL on your side, and pass `url::Url` directly.
+    pub fn new<U>(url: U) -> Self
+    where
+        U: TryInto<Url>,
+        U::Error: fmt::Debug,
+    {
+        let url = url.try_into().expect("invalid URL");
         Self {
             url,
             reconnect_interval: Some(DEFAULT_RECONNECT_INTERVAL),
@@ -82,13 +91,43 @@ impl ClientConfig {
         }
     }
 
-    pub fn basic(mut self, username: &str, password: &str) -> Self {
+    pub fn basic(mut self, username: impl fmt::Display, password: impl fmt::Display) -> Self {
         let credentials =
             base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
         self.headers.insert(
             http::header::AUTHORIZATION,
             http::HeaderValue::from_str(&format!("Basic {credentials}")).unwrap(),
         );
+        self
+    }
+
+    /// If invalid(outside of visible ASCII characters ranged between 32-127) token is passed, this function will panic.
+    pub fn bearer(mut self, token: impl fmt::Display) -> Self {
+        self.headers.insert(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_str(&format!("Bearer {token}"))
+                .expect("token contains invalid character"),
+        );
+        self
+    }
+
+    /// If you suppose the header name or value might be invalid, create `http::header::HeaderName` and `http::header::HeaderValue` on your side, and then pass it to this function
+    pub fn header<K, V>(mut self, key: K, value: V) -> Self
+    where
+        HeaderName: TryFrom<K>,
+        <HeaderName as TryFrom<K>>::Error: Into<http::Error>,
+        HeaderValue: TryFrom<V>,
+        <HeaderValue as TryFrom<V>>::Error: Into<http::Error>,
+    {
+        // Those errors are handled by the `expect` calls.
+        // Possibly a better way to do this?
+        let name = <HeaderName as TryFrom<K>>::try_from(key)
+            .map_err(Into::into)
+            .expect("invalid header name");
+        let value = <HeaderValue as TryFrom<V>>::try_from(value)
+            .map_err(Into::into)
+            .expect("invalid header value");
+        self.headers.insert(name, value);
         self
     }
 
@@ -120,7 +159,7 @@ impl ClientConfig {
 
 #[async_trait]
 pub trait ClientExt: Send {
-    type Params: std::fmt::Debug + Send;
+    type Params: fmt::Debug + Send;
 
     async fn text(&mut self, text: String) -> Result<(), Error>;
     async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
@@ -175,7 +214,7 @@ impl<E: ClientExt> Client<E> {
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
     /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
-    pub async fn call_with<R: std::fmt::Debug>(
+    pub async fn call_with<R: fmt::Debug>(
         &self,
         f: impl FnOnce(oneshot::Sender<R>) -> E::Params,
     ) -> R {
