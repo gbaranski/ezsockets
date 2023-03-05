@@ -77,7 +77,14 @@ pub struct ClientConfig {
 }
 
 impl ClientConfig {
-    pub fn new(url: Url) -> Self {
+    /// If invalid URL is passed, this function will panic.
+    /// In order to handle invalid URL, parse URL on your side, and pass `url::Url` directly.
+    pub fn new<U>(url: U) -> Self 
+    where 
+        U: TryInto<Url>,
+        U::Error: fmt::Debug
+    {
+        let url = url.try_into().expect("invalid URL");
         Self {
             url,
             reconnect_interval: Some(DEFAULT_RECONNECT_INTERVAL),
