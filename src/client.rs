@@ -55,8 +55,8 @@ use crate::Message;
 use crate::Socket;
 use async_trait::async_trait;
 use base64::Engine;
-use http::HeaderValue;
 use http::header::HeaderName;
+use http::HeaderValue;
 use std::fmt;
 use std::future::Future;
 use std::time::Duration;
@@ -78,10 +78,10 @@ pub struct ClientConfig {
 impl ClientConfig {
     /// If invalid URL is passed, this function will panic.
     /// In order to handle invalid URL, parse URL on your side, and pass `url::Url` directly.
-    pub fn new<U>(url: U) -> Self 
-    where 
+    pub fn new<U>(url: U) -> Self
+    where
         U: TryInto<Url>,
-        U::Error: fmt::Debug
+        U::Error: fmt::Debug,
     {
         let url = url.try_into().expect("invalid URL");
         Self {
@@ -105,12 +105,12 @@ impl ClientConfig {
     pub fn bearer(mut self, token: impl fmt::Display) -> Self {
         self.headers.insert(
             http::header::AUTHORIZATION,
-            http::HeaderValue::from_str(&format!("Bearer {token}")).expect("token contains invalid character"),
+            http::HeaderValue::from_str(&format!("Bearer {token}"))
+                .expect("token contains invalid character"),
         );
         self
     }
-    
-    
+
     /// If you suppose the header name or value might be invalid, create `http::header::HeaderName` and `http::header::HeaderValue` on your side, and then pass it to this function
     pub fn header<K, V>(mut self, key: K, value: V) -> Self
     where
@@ -118,16 +118,16 @@ impl ClientConfig {
         <HeaderName as TryFrom<K>>::Error: Into<http::Error>,
         HeaderValue: TryFrom<V>,
         <HeaderValue as TryFrom<V>>::Error: Into<http::Error>,
-     {
-
+    {
         // Those errors are handled by the `expect` calls.
         // Possibly a better way to do this?
-        let name = <HeaderName as TryFrom<K>>::try_from(key).map_err(Into::into).expect("invalid header name");
-        let value = <HeaderValue as TryFrom<V>>::try_from(value).map_err(Into::into).expect("invalid header value");
-        self.headers.insert(
-            name,
-            value,
-        );
+        let name = <HeaderName as TryFrom<K>>::try_from(key)
+            .map_err(Into::into)
+            .expect("invalid header name");
+        let value = <HeaderValue as TryFrom<V>>::try_from(value)
+            .map_err(Into::into)
+            .expect("invalid header value");
+        self.headers.insert(name, value);
         self
     }
 
