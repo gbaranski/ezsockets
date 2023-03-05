@@ -92,6 +92,15 @@ impl ClientConfig {
         self
     }
 
+    pub fn bearer(mut self, token: &str) -> Self {
+        self.headers.insert(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+        );
+        self
+    }
+    
+    
     pub fn reconnect_interval(mut self, reconnect_interval: Duration) -> Self {
         self.reconnect_interval = Some(reconnect_interval);
         self
