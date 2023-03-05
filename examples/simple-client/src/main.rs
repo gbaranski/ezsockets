@@ -4,7 +4,6 @@ use ezsockets::CloseCode;
 use ezsockets::CloseFrame;
 use ezsockets::Error;
 use std::io::BufRead;
-use url::Url;
 
 struct Client {}
 
@@ -31,9 +30,7 @@ impl ezsockets::ClientExt for Client {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let url = "ws://127.0.0.1:8080";
-    let url = Url::parse(url).unwrap();
-    let config = ClientConfig::new(url);
+    let config = ClientConfig::new("ws://127.0.0.1:8080");
     let (handle, future) = ezsockets::connect(|_| Client {}, config).await;
     tokio::spawn(async move {
         future.await.unwrap();
