@@ -58,6 +58,7 @@ use async_trait::async_trait;
 use base64::Engine;
 use http::HeaderValue;
 use http::header::HeaderName;
+use std::fmt;
 use std::future::Future;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -85,7 +86,7 @@ impl ClientConfig {
     }
 
     /// If invalid(outside of visible ASCII characters ranged between 32-127) token is passed, this function will panic.
-    pub fn basic(mut self, username: &str, password: &str) -> Self {
+    pub fn basic(mut self, username: impl fmt::Display, password: impl fmt::Display) -> Self {
         let credentials =
             base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
         self.headers.insert(
@@ -96,7 +97,7 @@ impl ClientConfig {
     }
 
     /// If invalid(outside of visible ASCII characters ranged between 32-127) token is passed, this function will panic.
-    pub fn bearer(mut self, token: &str) -> Self {
+    pub fn bearer(mut self, token: impl fmt::Display) -> Self {
         self.headers.insert(
             http::header::AUTHORIZATION,
             http::HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
@@ -153,7 +154,7 @@ impl ClientConfig {
 
 #[async_trait]
 pub trait ClientExt: Send {
-    type Params: std::fmt::Debug + Send;
+    type Params: fmt::Debug + Send;
 
     async fn text(&mut self, text: String) -> Result<(), Error>;
     async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
@@ -208,7 +209,7 @@ impl<E: ClientExt> Client<E> {
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
     /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
-    pub async fn call_with<R: std::fmt::Debug>(
+    pub async fn call_with<R: fmt::Debug>(
         &self,
         f: impl FnOnce(oneshot::Sender<R>) -> E::Params,
     ) -> R {
