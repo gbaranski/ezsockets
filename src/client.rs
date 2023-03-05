@@ -92,7 +92,6 @@ impl ClientConfig {
         }
     }
 
-    /// If invalid(outside of visible ASCII characters ranged between 32-127) token is passed, this function will panic.
     pub fn basic(mut self, username: impl fmt::Display, password: impl fmt::Display) -> Self {
         let credentials =
             base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
@@ -107,7 +106,7 @@ impl ClientConfig {
     pub fn bearer(mut self, token: impl fmt::Display) -> Self {
         self.headers.insert(
             http::header::AUTHORIZATION,
-            http::HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+            http::HeaderValue::from_str(&format!("Bearer {token}")).expect("token contains invalid character"),
         );
         self
     }
