@@ -56,6 +56,8 @@ use crate::Message;
 use crate::Socket;
 use async_trait::async_trait;
 use base64::Engine;
+use http::HeaderValue;
+use http::header::HeaderName;
 use std::future::Future;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -70,7 +72,7 @@ pub const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
 pub struct ClientConfig {
     url: Url,
     reconnect_interval: Option<Duration>,
-    headers: http::HeaderMap<http::HeaderValue>,
+    headers: http::HeaderMap,
 }
 
 impl ClientConfig {
@@ -82,6 +84,7 @@ impl ClientConfig {
         }
     }
 
+    /// If invalid(outside of visible ASCII characters ranged between 32-127) token is passed, this function will panic.
     pub fn basic(mut self, username: &str, password: &str) -> Self {
         let credentials =
             base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
@@ -92,6 +95,7 @@ impl ClientConfig {
         self
     }
 
+    /// If invalid(outside of visible ASCII characters ranged between 32-127) token is passed, this function will panic.
     pub fn bearer(mut self, token: &str) -> Self {
         self.headers.insert(
             http::header::AUTHORIZATION,
@@ -101,6 +105,26 @@ impl ClientConfig {
     }
     
     
+    /// If you suppose the header name or value might be invalid, create `http::header::HeaderName` and `http::header::HeaderValue` on your side, and then pass it to this function
+    pub fn header<K, V>(mut self, key: K, value: V) -> Self
+    where
+        HeaderName: TryFrom<K>,
+        <HeaderName as TryFrom<K>>::Error: Into<http::Error>,
+        HeaderValue: TryFrom<V>,
+        <HeaderValue as TryFrom<V>>::Error: Into<http::Error>,
+     {
+
+        // Those errors are handled by the `expect` calls.
+        // Possibly a better way to do this?
+        let name = <HeaderName as TryFrom<K>>::try_from(key).map_err(Into::into).expect("invalid header name");
+        let value = <HeaderValue as TryFrom<V>>::try_from(value).map_err(Into::into).expect("invalid header value");
+        self.headers.insert(
+            name,
+            value,
+        );
+        self
+    }
+
     pub fn reconnect_interval(mut self, reconnect_interval: Duration) -> Self {
         self.reconnect_interval = Some(reconnect_interval);
         self
