@@ -24,6 +24,8 @@ cfg-if = "1.0.0"
 
 axum_crate = { package = "axum", version = "0.6.1", features = ["ws"], optional = true }
 tokio-tungstenite = { version = "0.18.0", optional = true }
+actix-web_crate = { package = "actix-web", version = "4.3.1", optional = true }
+actix-http = { version = "3.3.1", optional = true }
 
 [features]
 default = ["client", "server"]
@@ -33,6 +35,7 @@ client = ["tokio-tungstenite"]
 server = []
 tungstenite = ["server", "tokio-tungstenite"]
 axum = ["server", "axum_crate"]
+actix-web = ["actix-web_crate", "actix-http"]
 
 [dev-dependencies]
 tokio = { version = "1.17.0", features = ["full"] }
@@ -46,7 +49,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [workspace]
-members = ["examples/chat-client", "examples/chat-server", "examples/chat-server-axum", "examples/echo-server", "examples/simple-client", "examples/counter-server"]
+members = ["examples/chat-client", "examples/chat-server", "examples/chat-server-axum", "examples/chat-server-actix-web", "examples/echo-server", "examples/simple-client", "examples/counter-server"]
 
 [[test]]
 name = "axum"

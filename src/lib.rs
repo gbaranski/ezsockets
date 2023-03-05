@@ -18,6 +18,9 @@ pub use socket::Stream;
 #[cfg(feature = "axum")]
 pub mod axum;
 
+#[cfg(feature = "actix-web")]
+pub mod actix_web;
+
 #[cfg(feature = "tokio-tungstenite")]
 pub mod tungstenite;
 
