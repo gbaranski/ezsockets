@@ -112,7 +112,7 @@ struct Disconnected<E: ServerExt> {
 struct ServerActor<E: ServerExt> {
     connections: mpsc::UnboundedReceiver<NewConnection<E>>,
     disconnections: mpsc::UnboundedReceiver<Disconnected<E>>,
-    calls: mpsc::UnboundedReceiver<E::Params>,
+    calls: mpsc::UnboundedReceiver<E::Call>,
     server: Server<E>,
     extension: E,
 }
@@ -127,7 +127,7 @@ where
         loop {
             tokio::select! {
                 Some(NewConnection{socket, address, args, respond_to}) = self.connections.recv() => {
-                    let session = self.extension.accept(socket, address, args).await?;
+                    let session = self.extension.on_connect(socket, address, args).await?;
                     let session_id = session.id.clone();
                     tracing::info!("connection from {address} accepted");
                     respond_to.send(session_id.clone()).unwrap();
@@ -141,7 +141,7 @@ where
                     });
                 }
                 Some(Disconnected{id, result}) = self.disconnections.recv() => {
-                    self.extension.disconnected(id.clone()).await?;
+                    self.extension.on_disconnect(id.clone()).await?;
                     match result {
                         Ok(Some(CloseFrame { code, reason })) => {
                             tracing::info!(%id, ?code, %reason, "connection closed")
@@ -150,8 +150,8 @@ where
                         Err(err) => tracing::warn!(%id, "connection closed due to: {err}"),
                     };
                 }
-                Some(params) = self.calls.recv() => {
-                    self.extension.call(params).await?
+                Some(call) = self.calls.recv() => {
+                    self.extension.on_call(call).await?
                 }
                 else => break
             }
@@ -162,30 +162,38 @@ where
 
 #[async_trait]
 pub trait ServerExt: Send {
+    /// Type of the session that will be created for each connection.
     type Session: SessionExt;
-    type Params: Send + std::fmt::Debug;
+    /// Type the custom call - parameters passed to `on_call`.
+    type Call: Send + std::fmt::Debug;
 
-    async fn accept(
+    /// Called when client connects to the server.
+    /// Here you should create a `Session` with your own implementation of `SessionExt` and return it.
+    ///If you don't want to accept the connection, return an error.
+    async fn on_connect(
         &mut self,
         socket: Socket,
         address: SocketAddr,
         args: <Self::Session as SessionExt>::Args,
     ) -> Result<
-        Session<<Self::Session as SessionExt>::ID, <Self::Session as SessionExt>::Params>,
+        Session<<Self::Session as SessionExt>::ID, <Self::Session as SessionExt>::Call>,
         Error,
     >;
-    async fn disconnected(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), Error>;
-    async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
+    /// Called when client disconnects from the server.
+    async fn on_disconnect(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), Error>;
+    /// Handler for custom calls from other parts from your program.
+    /// This is useful for concurrency and polymorphism.
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
 }
 
 #[derive(Debug)]
 pub struct Server<E: ServerExt> {
     connections: mpsc::UnboundedSender<NewConnection<E>>,
     disconnections: mpsc::UnboundedSender<Disconnected<E>>,
-    calls: mpsc::UnboundedSender<E::Params>,
+    calls: mpsc::UnboundedSender<E::Call>,
 }
 
-impl<E: ServerExt> From<Server<E>> for mpsc::UnboundedSender<E::Params> {
+impl<E: ServerExt> From<Server<E>> for mpsc::UnboundedSender<E::Call> {
     fn from(server: Server<E>) -> Self {
         server.calls
     }
@@ -221,7 +229,7 @@ impl<E: ServerExt + 'static> Server<E> {
 }
 
 impl<E: ServerExt> Server<E> {
-    pub async fn accept(
+    pub(crate) async fn accept(
         &self,
         socket: Socket,
         address: SocketAddr,
@@ -251,7 +259,7 @@ impl<E: ServerExt> Server<E> {
             .unwrap();
     }
 
-    pub fn call(&self, params: E::Params) {
+    pub fn call(&self, params: E::Call) {
         self.calls.send(params).map_err(|_| ()).unwrap();
     }
 
@@ -259,7 +267,7 @@ impl<E: ServerExt> Server<E> {
     /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
     pub async fn call_with<R: std::fmt::Debug>(
         &self,
-        f: impl FnOnce(oneshot::Sender<R>) -> E::Params,
+        f: impl FnOnce(oneshot::Sender<R>) -> E::Call,
     ) -> R {
         let (sender, receiver) = oneshot::channel();
         let params = f(sender);

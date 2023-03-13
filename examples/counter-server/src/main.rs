@@ -15,9 +15,9 @@ struct CounterServer {}
 #[async_trait]
 impl ezsockets::ServerExt for CounterServer {
     type Session = CounterSession;
-    type Params = ();
+    type Call = ();
 
-    async fn accept(
+    async fn on_connect(
         &mut self,
         socket: Socket,
         address: SocketAddr,
@@ -49,14 +49,14 @@ impl ezsockets::ServerExt for CounterServer {
         Ok(session)
     }
 
-    async fn disconnected(
+    async fn on_disconnect(
         &mut self,
         _id: <Self::Session as ezsockets::SessionExt>::ID,
     ) -> Result<(), Error> {
         Ok(())
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
+    async fn on_call(&mut self, params: Self::Call) -> Result<(), Error> {
         let () = params;
         Ok(())
     }
@@ -86,22 +86,22 @@ enum Message {
 impl ezsockets::SessionExt for CounterSession {
     type ID = SessionID;
     type Args = ();
-    type Params = Message;
+    type Call = Message;
 
     fn id(&self) -> &Self::ID {
         &self.id
     }
 
-    async fn text(&mut self, text: String) -> Result<(), Error> {
+    async fn on_text(&mut self, text: String) -> Result<(), Error> {
         self.handle.text(text);
         Ok(())
     }
 
-    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
+    async fn on_binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
         unimplemented!()
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
+    async fn on_call(&mut self, params: Self::Call) -> Result<(), Error> {
         match params {
             Message::Increment => self.counter += 1,
             Message::Share => self.handle.text(format!("counter: {}", self.counter)),
