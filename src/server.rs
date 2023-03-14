@@ -46,7 +46,7 @@
 //! }
 //!
 //! // Create our own server that implements `ServerExt`
-//! 
+//!
 //! use ezsockets::Server;
 //! use ezsockets::Socket;
 //! use std::net::SocketAddr;

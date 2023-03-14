@@ -12,7 +12,7 @@
 //! # struct MySession {}
 //! # #[async_trait]
 //! # impl ezsockets::SessionExt for MySession {
-//! #   type ID = u16; 
+//! #   type ID = u16;
 //! #   type Args = ();
 //! #   type Call = ();
 //! #   fn id(&self) -> &Self::ID { unimplemented!() }
