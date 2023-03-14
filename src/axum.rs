@@ -1,11 +1,36 @@
 //! `axum` feature must be enabled in order to use this module.
 //!
-//! ```ignore
+//! ```no_run
+//! # use axum_crate as axum;
+//! use async_trait::async_trait;
+//! use axum::routing::get;
+//! use axum::Extension;
+//! use axum::response::IntoResponse;
+//! use std::net::SocketAddr;
+//! use ezsockets::axum::Upgrade;
+//!
+//! # struct MySession {}
+//! # #[async_trait]
+//! # impl ezsockets::SessionExt for MySession {
+//! #   type ID = u16; 
+//! #   type Args = ();
+//! #   type Call = ();
+//! #   fn id(&self) -> &Self::ID { unimplemented!() }
+//! #   async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! #   async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! #   async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! # }
+//! #
 //! struct EchoServer {}
 //!
 //! #[async_trait]
 //! impl ezsockets::ServerExt for EchoServer {
 //!     // ...
+//!    # type Session = MySession;
+//!    # type Call = ();
+//!    # async fn on_connect(&mut self, socket: ezsockets::Socket, address: std::net::SocketAddr, _args: ()) -> Result<ezsockets::Session<u16, ()>, ezsockets::Error> { unimplemented!() }
+//!    # async fn on_disconnect(&mut self, id: <Self::Session as ezsockets::SessionExt>::ID) -> Result<(), ezsockets::Error> { unimplemented!() }
+//!    # async fn on_call(&mut self, params: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
 //! }
 //!
 //! #[tokio::main]
@@ -28,12 +53,10 @@
 //! }
 //!
 //! async fn websocket_handler(
-//!     Extension(server): Extension<ezsockets::Server>,
+//!     Extension(server): Extension<ezsockets::Server<EchoServer>>,
 //!     ezsocket: Upgrade,
 //! ) -> impl IntoResponse {
-//!     ezsocket.on_upgrade(|socket, address| async move {
-//!         server.accept(socket, address, ()).await;
-//!     })
+//!     ezsocket.on_upgrade(server, ())
 //! }
 //! ```
 

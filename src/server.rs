@@ -1,13 +1,16 @@
+//! # WebSocket Server
 //! ## Get started
 //!
 //! To create a simple echo server, we need to define a `Session` struct.
 //! The code below represents a simple echo server.
 //!
-//! ```ignore
+//! ```
 //! use async_trait::async_trait;
-//! use ezsockets::Session;
+//!
+//! // Create our own session that implements `SessionExt`
 //!
 //! type SessionID = u16;
+//! type Session = ezsockets::Session<SessionID, ()>;
 //!
 //! struct EchoSession {
 //!     handle: Session,
@@ -18,35 +21,33 @@
 //! impl ezsockets::SessionExt for EchoSession {
 //!     type ID = SessionID;
 //!     type Args = ();
-//!     type Params = ();
+//!     type Call = ();
 //!
 //!     fn id(&self) -> &Self::ID {
 //!         &self.id
 //!     }
 //!
-//!     async fn text(&mut self, text: String) -> Result<(), ezsockets::Error> {
+//!     // Define handlers for incoming messages
+//!
+//!     async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> {
 //!         self.handle.text(text); // Send response to the client
 //!         Ok(())
 //!     }
 //!
-//!     async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
+//!     async fn on_binary(&mut self, _bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
 //!         unimplemented!()
 //!     }
 //!
-//!     async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-//!         let () = params;
+//!     // `on_call` is for custom messages, it's useful if you want to send messages from other thread or tokio task. Use `Session::call` to send a message.
+//!     async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
+//!         let () = call;
 //!         Ok(())
 //!     }
 //! }
-//! ```
 //!
-//! Then, we need to define a `Server` struct
-//!
-//!
-//! ```ignore
-//! use async_trait::async_trait;
+//! // Create our own server that implements `ServerExt`
+//! 
 //! use ezsockets::Server;
-//! use ezsockets::Session;
 //! use ezsockets::Socket;
 //! use std::net::SocketAddr;
 //!
@@ -55,9 +56,9 @@
 //! #[async_trait]
 //! impl ezsockets::ServerExt for EchoServer {
 //!     type Session = EchoSession;
-//!     type Params = ();
+//!     type Call = ();
 //!
-//!     async fn accept(
+//!     async fn on_connect(
 //!         &mut self,
 //!         socket: Socket,
 //!         address: SocketAddr,
@@ -68,15 +69,15 @@
 //!         Ok(session)
 //!     }
 //!
-//!     async fn disconnected(
+//!     async fn on_disconnect(
 //!         &mut self,
 //!         _id: <Self::Session as ezsockets::SessionExt>::ID,
 //!     ) -> Result<(), ezsockets::Error> {
 //!         Ok(())
 //!     }
 //!
-//!     async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-//!         let () = params;
+//!     async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
+//!         let () = call;
 //!         Ok(())
 //!     }
 //! }
@@ -229,7 +230,7 @@ impl<E: ServerExt + 'static> Server<E> {
 }
 
 impl<E: ServerExt> Server<E> {
-    pub(crate) async fn accept(
+    pub async fn accept(
         &self,
         socket: Socket,
         address: SocketAddr,
