@@ -27,6 +27,7 @@ where
             ezsockets::tungstenite::run_on(
                 server,
                 listener,
+                ezsockets::tungstenite::Acceptor::Plain,
                 |_| async move { Ok(Default::default()) },
             )
             .await
