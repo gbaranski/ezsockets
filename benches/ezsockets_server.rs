@@ -70,7 +70,12 @@ impl ezsockets::SessionExt for EchoSession {
 pub async fn run(listener: std::net::TcpListener) {
     let listener = TcpListener::from_std(listener).unwrap();
     let (server, _) = ezsockets::Server::create(|_| EchoServer {});
-    ezsockets::tungstenite::run_on(server, listener, |_socket| async move { Ok(()) })
-        .await
-        .unwrap();
+    ezsockets::tungstenite::run_on(
+        server,
+        listener,
+        ezsockets::tungstenite::Acceptor::Plain,
+        |_socket| async move { Ok(()) },
+    )
+    .await
+    .unwrap();
 }

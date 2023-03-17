@@ -24,6 +24,8 @@ cfg-if = "1.0.0"
 
 axum_crate = { package = "axum", version = "0.6.1", features = ["ws"], optional = true }
 tokio-tungstenite = { version = "0.18.0", optional = true }
+tokio-rustls = { version = "0.23.4", optional = true }
+tokio-native-tls = { version = "0.3.1", optional = true }
 
 [features]
 default = ["client", "server"]
@@ -34,8 +36,9 @@ server = []
 tungstenite = ["server", "tokio-tungstenite"]
 axum = ["server", "axum_crate"]
 
-native-tls = ["tokio-tungstenite/native-tls"]
-rustls = ["tokio-tungstenite/rustls"]
+tls = []
+native-tls = ["tls", "tokio-native-tls", "tokio-tungstenite/native-tls"]
+rustls = ["tls", "tokio-rustls", "tokio-tungstenite/rustls-tls-webpki-roots"]
 
 [dev-dependencies]
 tokio = { version = "1.17.0", features = ["full"] }
@@ -49,7 +52,15 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [workspace]
-members = ["examples/chat-client", "examples/chat-server", "examples/chat-server-axum", "examples/echo-server", "examples/simple-client", "examples/counter-server"]
+members = [
+    "examples/chat-client",
+    "examples/chat-server",
+    "examples/chat-server-axum",
+    "examples/echo-server",
+    "examples/echo-server-native-tls",
+    "examples/simple-client",
+    "examples/counter-server"
+]
 
 [[test]]
 name = "axum"
