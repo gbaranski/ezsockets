@@ -3,6 +3,7 @@
 Creating a WebSocket server or a client in Rust can be troublesome. This crate facilitates this process by providing:
 
 - Traits to allow declarative and event-based programming.
+- Easy concurrency with Tokio and async/await. Server sessions are Clone'able and can be shared between tasks.
 - Heartbeat mechanism to keep the connection alive.
 - Automatic reconnection of WebSocket Client.
 - Support for multiple back-ends such as Axum or Tungstenite.
