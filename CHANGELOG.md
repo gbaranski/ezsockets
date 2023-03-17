@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.5.0 BREAKING
+
+- feat: add TLS support for servers([#31](https://github.com/gbaranski/ezsockets/pull/31))
+- refactor: rename methods and types for better distinction([#28](https://github.com/gbaranski/ezsockets/pull/28))
+
+|Before|After|
+|:------|:-----|
+|`ClientExt::Params`| `ClientExt::Call`|
+|`ClientExt::text(...)`| `ClientExt::on_text(...)`|
+|`ClientExt::binary(...)`| `ClientExt::on_binary(...)`|
+|`ClientExt::call(...)`| `ClientExt::on_call(...)`|
+|`ClientExt::connected(...)`| `ClientExt::on_connected(...)`|
+|`ClientExt::closed(...)`| `ClientExt::closed(...)`|
+|-|-|
+|`ServerExt::Params`| `ServerExt::Call`|
+|`ServerExt::accept(...)`| `ServerExt::on_connect(...)`|
+|`ServerExt::disconnected(...)`| `ServerExt::on_disconnect(...)`|
+|`ServerExt::call(...)`| `ServerExt::on_call(...)`|
+|-|-|
+|`SessionExt::Params`| `SessionExt::Call`|
+|`SessionExt::text(...)`| `SessionExt::on_text(...)`|
+|`SessionExt::binary(...)`| `SessionExt::on_binary(...)`|
+|`SessionExt::call(...)`| `SessionExt::on_call(...)`|
+
+Additionally for the `ezsockets::tungstenite::run_on` function you need to also pass an `ezsockets::tungstenite::Acceptor`, if you don't use TLS, just pass `ezsockets::tungstenite::Acceptor::Plain`.
+
+
 ## v0.4.3
 - connect request customizability([#25](https://github.com/gbaranski/ezsockets/pull/25)) with bearer authorization and custom headers.
 - allow passing String directly to `ClientConfig::new()`
