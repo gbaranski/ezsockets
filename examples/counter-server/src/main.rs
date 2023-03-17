@@ -56,8 +56,8 @@ impl ezsockets::ServerExt for CounterServer {
         Ok(())
     }
 
-    async fn on_call(&mut self, params: Self::Call) -> Result<(), Error> {
-        let () = params;
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
+        let () = call;
         Ok(())
     }
 }
@@ -101,8 +101,8 @@ impl ezsockets::SessionExt for CounterSession {
         unimplemented!()
     }
 
-    async fn on_call(&mut self, params: Self::Call) -> Result<(), Error> {
-        match params {
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
+        match call {
             Message::Increment => self.counter += 1,
             Message::Share => self.handle.text(format!("counter: {}", self.counter)),
         };

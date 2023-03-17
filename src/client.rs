@@ -168,7 +168,7 @@ pub trait ClientExt: Send {
     async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
     /// Handler for custom calls from other parts from your program.
     /// This is useful for concurrency and polymorphism.
-    async fn on_call(&mut self, params: Self::Call) -> Result<(), Error>;
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
 
     /// Called when the client successfully connected(or reconnected).
     async fn on_connect(&mut self) -> Result<(), Error> {
@@ -228,9 +228,9 @@ impl<E: ClientExt> Client<E> {
         f: impl FnOnce(oneshot::Sender<R>) -> E::Call,
     ) -> R {
         let (sender, receiver) = oneshot::channel();
-        let params = f(sender);
+        let call = f(sender);
 
-        self.calls.send(params).unwrap();
+        self.calls.send(call).unwrap();
         receiver.await.unwrap()
     }
 
@@ -295,8 +295,8 @@ impl<E: ClientExt> ClientActor<E> {
                         return Ok(())
                     }
                 }
-                Some(params) = self.call_receiver.recv() => {
-                    self.client.on_call(params).await?;
+                Some(call) = self.call_receiver.recv() => {
+                    self.client.on_call(call).await?;
                 }
                 result = self.socket.stream.recv() => {
                     match result {

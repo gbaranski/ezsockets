@@ -111,22 +111,22 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
     }
 
     /// Calls a method on the session
-    pub fn call(&self, params: P) {
+    pub fn call(&self, call: P) {
         self.calls
-            .send(params)
+            .send(call)
             .unwrap_or_else(|_| panic!("Session::call {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
-    /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
+    /// This is just for easier construction of the call which happen to contain oneshot::Sender in it.
     pub async fn call_with<R: std::fmt::Debug>(
         &self,
         f: impl FnOnce(oneshot::Sender<R>) -> P,
     ) -> R {
         let (sender, receiver) = oneshot::channel();
-        let params = f(sender);
+        let call = f(sender);
 
-        self.calls.send(params).unwrap();
+        self.calls.send(call).unwrap();
         receiver.await.unwrap()
     }
 }
@@ -166,8 +166,8 @@ impl<E: SessionExt> SessionActor<E> {
                         return Ok(frame)
                     }
                 }
-                Some(params) = self.call_receiver.recv() => {
-                    self.extension.on_call(params).await?;
+                Some(call) = self.call_receiver.recv() => {
+                    self.extension.on_call(call).await?;
                 }
                 message = self.socket.recv() => {
                     match message {

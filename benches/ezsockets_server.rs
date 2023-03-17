@@ -31,8 +31,8 @@ impl ezsockets::ServerExt for EchoServer {
         Ok(())
     }
 
-    async fn on_call(&mut self, params: Self::Call) -> Result<(), ezsockets::Error> {
-        let () = params;
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
+        let () = call;
         Ok(())
     }
 }
@@ -61,8 +61,8 @@ impl ezsockets::SessionExt for EchoSession {
         unimplemented!()
     }
 
-    async fn on_call(&mut self, params: Self::Call) -> Result<(), ezsockets::Error> {
-        let () = params;
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
+        let () = call;
         Ok(())
     }
 }

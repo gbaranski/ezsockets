@@ -260,20 +260,20 @@ impl<E: ServerExt> Server<E> {
             .unwrap();
     }
 
-    pub fn call(&self, params: E::Call) {
-        self.calls.send(params).map_err(|_| ()).unwrap();
+    pub fn call(&self, call: E::Call) {
+        self.calls.send(call).map_err(|_| ()).unwrap();
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
-    /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
+    /// This is just for easier construction of the call which happen to contain oneshot::Sender in it.
     pub async fn call_with<R: std::fmt::Debug>(
         &self,
         f: impl FnOnce(oneshot::Sender<R>) -> E::Call,
     ) -> R {
         let (sender, receiver) = oneshot::channel();
-        let params = f(sender);
+        let call = f(sender);
 
-        self.calls.send(params).unwrap();
+        self.calls.send(call).unwrap();
         receiver.await.unwrap()
     }
 }

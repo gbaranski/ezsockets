@@ -56,8 +56,8 @@ impl ezsockets::ServerExt for ChatServer {
         Ok(())
     }
 
-    async fn on_call(&mut self, params: Self::Call) -> Result<(), Error> {
-        match params {
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
+        match call {
             ChatMessage::Send { text, from } => {
                 let sessions = self.sessions.iter().filter(|(id, _)| from != **id);
                 let text = format!("from {from}: {text}");
@@ -98,8 +98,8 @@ impl ezsockets::SessionExt for ChatSession {
         unimplemented!()
     }
 
-    async fn on_call(&mut self, params: Self::Call) -> Result<(), Error> {
-        let () = params;
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
+        let () = call;
         Ok(())
     }
 }

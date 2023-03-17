@@ -82,8 +82,8 @@ impl ezsockets::ServerExt for ChatServer {
         Ok(())
     }
 
-    async fn on_call(&mut self, params: Self::Call) -> Result<(), Error> {
-        match params {
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
+        match call {
             Message::Send { from, room, text } => {
                 let (ids, sessions): (Vec<SessionID>, Vec<&Session>) = self
                     .rooms
@@ -191,8 +191,8 @@ impl ezsockets::SessionExt for SessionActor {
         unimplemented!()
     }
 
-    async fn on_call(&mut self, params: Self::Call) -> Result<(), Error> {
-        let () = params;
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
+        let () = call;
         Ok(())
     }
 }
@@ -237,8 +237,8 @@ impl ezsockets::ClientExt for ChatClient {
         Ok(())
     }
 
-    async fn on_call(&mut self, params: Self::Call) -> Result<(), ezsockets::Error> {
-        match params {
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
+        match call {
             ChatClientMessage::Send(message) => self.handle.text(message),
             ChatClientMessage::Subscribe(respond_to) => {
                 respond_to.send(self.messages.subscribe()).unwrap()
