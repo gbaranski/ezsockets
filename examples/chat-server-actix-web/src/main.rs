@@ -1,14 +1,13 @@
+use actix_web::App;
+use actix_web::HttpRequest;
+use actix_web::HttpResponse;
+use actix_web::HttpServer;
+use actix_web::web;
 use async_trait::async_trait;
-use axum::extract::Extension;
-use axum::response::IntoResponse;
-use axum::routing::get;
-use axum::Router;
-use ezsockets::axum::Upgrade;
 use ezsockets::Error;
 use ezsockets::Server;
 use ezsockets::Socket;
 use std::collections::HashMap;
-use std::io::BufRead;
 use std::net::SocketAddr;
 
 type SessionID = u16;
@@ -104,42 +103,31 @@ impl ezsockets::SessionExt for ChatSession {
     }
 }
 
-#[tokio::main]
-async fn main() {
+struct AppState {
+    server: Server<ChatServer>,
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt::init();
     let (server, _) = Server::create(|handle| ChatServer {
         sessions: HashMap::new(),
         handle,
     });
-
-    let app = Router::new()
-        .route("/websocket", get(websocket_handler))
-        .layer(Extension(server.clone()));
-
-    let address = SocketAddr::from(([127, 0, 0, 1], 8080));
-
-    tokio::spawn(async move {
-        tracing::debug!("listening on {}", address);
-        axum::Server::bind(&address)
-            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-            .await
-            .unwrap();
-    });
-
-    let stdin = std::io::stdin();
-    let lines = stdin.lock().lines();
-    for line in lines {
-        let line = line.unwrap();
-        server.call(ChatMessage::Send {
-            text: line,
-            from: SessionID::MAX, // reserve some ID for the server
-        });
-    }
+    HttpServer::new(move || {
+        App::new()
+            .route("/ws", web::get().to(index))
+            .app_data(web::Data::new(AppState { server: server.clone() }))
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
 }
 
-async fn websocket_handler(
-    Extension(server): Extension<Server<ChatServer>>,
-    ezsocket: Upgrade,
-) -> impl IntoResponse {
-    ezsocket.on_upgrade(server, ())
+
+
+async fn index(req: HttpRequest, stream: web::Payload, data: web::Data<AppState>) -> Result<HttpResponse, actix_web::Error> {
+    let (resp, id) = ezsockets::actix_web::accept(req, stream, &data.server, ()).await?;
+    tracing::info!(%id, ?resp, "new connection");
+    Ok(resp)
 }

@@ -21,7 +21,7 @@ use crate::{socket::Config, Server, ServerExt, SessionExt, Socket};
 pub async fn accept<SE, SX>(
     req: HttpRequest,
     payload: web::Payload,
-    server: Server<SE>,
+    server: &Server<SE>,
     args: <SE::Session as SessionExt>::Args,
 ) -> Result<(HttpResponse, SX::ID), Error> 
 where 
