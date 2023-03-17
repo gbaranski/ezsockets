@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.5.1
+- fix examples links in README.md
+
 ## v0.5.0 BREAKING
 
 - feat: add TLS support for servers([#31](https://github.com/gbaranski/ezsockets/pull/31))
