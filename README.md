@@ -2,225 +2,48 @@
 
 Creating a WebSocket server or a client in Rust can be troublesome. This crate facilitates this process by providing:
 
-- High-level abstraction of WebSocket, handling Ping/Pong from both Client and Server.
 - Traits to allow declarative and event-based programming.
+- Easy concurrency with Tokio and async/await. Server sessions are Clone'able and can be shared between tasks.
+- Heartbeat mechanism to keep the connection alive.
 - Automatic reconnection of WebSocket Client.
+- Support for multiple back-ends such as Axum or Tungstenite.
+- TLS support for servers with `rustls` and `native-tls`.
+
+## Documentation
 
 View the full documentation at [docs.rs/ezsockets](http://docs.rs/ezsockets)
 
+## Examples
+- [`simple-client`](https://github.com/gbaranski/ezsockets/tree/master/examples/chat-client) - a simplest WebSocket client which uses stdin as input.
+- [`echo-server`](https://github.com/gbaranski/ezsockets/tree/master/examples/echo-server) - server that echoes back every message it receives.
+- [`echo-server`](https://github.com/gbaranski/ezsockets/tree/master/examples/echo-server-native-tls) - same as `echo-server`, but with `native-tls`.
+- [`counter-server`](https://github.com/gbaranski/ezsockets/tree/master/examples/counter-server) - server that increments global value every second and shares it with client
+- [`chat-client`](https://github.com/gbaranski/ezsockets/tree/master/examples/chat-client) - chat client for `chat-server` and `chat-server-axum` examples
+- [`chat-server`](https://github.com/gbaranski/ezsockets/tree/master/examples/chat-server) - chat server with support of rooms
+- [`chat-server-axum`](https://github.com/gbaranski/ezsockets/tree/master/examples/chat-server-axum) - same as above, but using `axum` as a back-end
+
+
 ## Client
 
-The code below represents a simple client that redirects stdin to the WebSocket server.
+[`tokio-tungstenite`](https://github.com/snapview/tokio-tungstenite) is being used under the hood.
 
-```rust
-use async_trait::async_trait;
-use ezsockets::ClientConfig;
-use std::io::BufRead;
-use url::Url;
-
-struct Client {}
-
-#[async_trait]
-impl ezsockets::ClientExt for Client {
-    type Params = ();
-
-    async fn text(&mut self, text: String) -> Result<(), ezsockets::Error> {
-        tracing::info!("received message: {text}");
-        Ok(())
-    }
-
-    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
-        tracing::info!("received bytes: {bytes:?}");
-        Ok(())
-    }
-
-    async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-        let () = params;
-        Ok(())
-    }
-}
-
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
-    let url = Url::parse("ws://localhost:8080/websocket").unwrap();
-    let config = ClientConfig::new(url);
-    let (handle, future) = ezsockets::connect(|_client| Client { }, config).await;
-    tokio::spawn(async move {
-        future.await.unwrap();
-    });
-    let stdin = std::io::stdin();
-    let lines = stdin.lock().lines();
-    for line in lines {
-        let line = line.unwrap();
-        tracing::info!("sending {line}");
-        handle.text(line);
-    }
-}
-
-```
-
+See [examples/simple-client](https://github.com/gbaranski/ezsockets/tree/master/examples/simple-client) for a simple usage
+and [docs.rs/ezsockets/server](https://docs.rs/ezsockets/latest/ezsockets/client/index.html) for documentation.
 
 ## Server
 
-To create a simple echo server, we need to define a `Session` struct.
-The code below represents a simple echo server.
+WebSocket server can use one of supported back-ends:
+- [`tokio-tungstenite`](https://github.com/snapview/tokio-tungstenite) - the simplest way to get started.
+- [`axum`](https://github.com/tokio-rs/axum) - ergonomic and modular web framework built with Tokio, Tower, and Hyper
+- [`actix-web`](https://github.com/actix/actix-web) - Work in progress at [#22](https://github.com/gbaranski/ezsockets/issues/22)
 
-```rust
-use async_trait::async_trait;
-use ezsockets::Session;
+See [examples/echo-server](https://github.com/gbaranski/ezsockets/tree/master/examples/echo-server) for a simple usage
+and [docs.rs/ezsockets/server](https://docs.rs/ezsockets/latest/ezsockets/server/index.html) for documentation.
 
-type SessionID = u16;
+# License
 
-struct EchoSession {
-    handle: Session,
-    id: SessionID,
-}
+Licensed under [MIT](https://choosealicense.com/licenses/mit/).
 
-#[async_trait]
-impl ezsockets::SessionExt for EchoSession {
-    type ID = SessionID;
-    type Args = ();
-    type Params = ();
+# Contact
 
-    fn id(&self) -> &Self::ID {
-        &self.id
-    }
-
-    async fn text(&mut self, text: String) -> Result<(), ezsockets::Error> {
-        self.handle.text(text); // Send response to the client
-        Ok(())
-    }
-
-    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
-        unimplemented!()
-    }
-
-    async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-        let () = params;
-        Ok(())
-    }
-}
-```
-
-Then, we need to define a `Server` struct
-
-
-```rust
-use async_trait::async_trait;
-use ezsockets::Server;
-use ezsockets::Session;
-use ezsockets::Socket;
-use std::net::SocketAddr;
-
-struct EchoServer {}
-
-#[async_trait]
-impl ezsockets::ServerExt for EchoServer {
-    type Session = EchoSession;
-    type Params = ();
-
-    async fn accept(
-        &mut self,
-        socket: Socket,
-        address: SocketAddr,
-        _args: (),
-    ) -> Result<Session, ezsockets::Error> {
-        let id = address.port();
-        let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
-        Ok(session)
-    }
-
-    async fn disconnected(
-        &mut self,
-        _id: <Self::Session as ezsockets::SessionExt>::ID,
-    ) -> Result<(), ezsockets::Error> {
-        Ok(())
-    }
-
-    async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-        let () = params;
-        Ok(())
-    }
-}
-```
-
-That's all! Now we can start the server. Take a look at the available [Server back-ends](#server-back-ends). For a simple usage, I'd recommend [tokio-tungstenite](#tokio-tungstenite).
-
-## Server back-ends
-
-- [x] [`tokio-tungstenite`](#tokio-tungstenite), a neat Tokio based WebSocket implementation. However, it does not provide fancy features like routing or authentication.
-- [x] [`axum`](#axum), an ergonomic and modular web framework built with Tokio, Tower, and Hyper.
-- [ ] [`actix-web`](#actix-web) a powerful, pragmatic, and extremely fast web framework for Rust.
-
-### [`tokio-tungstenite`](https://github.com/snapview/tokio-tungstenite)
-
-Enable using
-```toml
-ezsockets = { version = "0.4", features = ["tungstenite"] }
-```
-
-```rust
-struct EchoServer {}
-
-#[async_trait]
-impl ezsockets::ServerExt for EchoServer {
-    // ...
-}
-
-#[tokio::main]
-async fn main() {
-    let (server, _) = ezsockets::Server::create(|_| EchoServer {});
-    ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_socket| async move { Ok(()) })
-        .await
-        .unwrap();
-}
-```
-
-### [`axum`](https://github.com/tokio-rs/axum)
-
-Enable using
-```toml
-ezsockets = { version = "0.4", features = ["axum"] }
-```
-
-```rust
-struct EchoServer {}
-
-#[async_trait]
-impl ezsockets::ServerExt for EchoServer {
-    // ...
-}
-
-#[tokio::main]
-async fn main() {
-    let (server, _) = ezsockets::Server::create(|_| EchoServer {});
-    let app = axum::Router::new()
-        .route("/websocket", get(websocket_handler))
-        .layer(Extension(server.clone()));
-
-    let address = std::net::SocketAddr::from(([127, 0, 0, 1], 8080));
-
-    tokio::spawn(async move {
-        tracing::debug!("listening on {}", address);
-        axum::Server::bind(&address)
-            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-            .await
-            .unwrap();
-    });
-
-}
-
-async fn websocket_handler(
-    Extension(server): Extension<ezsockets::Server>,
-    ezsocket: Upgrade,
-) -> impl IntoResponse {
-    ezsocket.on_upgrade(|socket, address| async move {
-        server.accept(socket, address, ()).await;
-    })
-}
-```
-
-### [`actix-web`](https://github.com/actix/actix-web)
-
-Work in progress!
+Reach me out on Discord `gbaranski#5119`, or mail me at me@gbaranski.com.

@@ -10,20 +10,20 @@ struct Client {}
 
 #[async_trait]
 impl ezsockets::ClientExt for Client {
-    type Params = ();
+    type Call = ();
 
-    async fn text(&mut self, text: String) -> Result<(), Error> {
+    async fn on_text(&mut self, text: String) -> Result<(), Error> {
         tracing::info!("received message: {text}");
         Ok(())
     }
 
-    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+    async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
         tracing::info!("received bytes: {bytes:?}");
         Ok(())
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
-        let () = params;
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
+        let () = call;
         Ok(())
     }
 }
@@ -31,8 +31,11 @@ impl ezsockets::ClientExt for Client {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let url = "ws://127.0.0.1:8080";
-    let url = Url::parse(url).unwrap();
+    let mut args = std::env::args();
+    let url = args
+        .nth(1)
+        .unwrap_or_else(|| "ws://127.0.0.1:8080".to_string());
+    let url = Url::parse(&url).unwrap();
     let config = ClientConfig::new(url);
     let (handle, future) = ezsockets::connect(|_| Client {}, config).await;
     tokio::spawn(async move {

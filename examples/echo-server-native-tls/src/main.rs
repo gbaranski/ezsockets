@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use ezsockets::Error;
 use ezsockets::Server;
 use ezsockets::Socket;
+use native_tls::Identity;
 use std::net::SocketAddr;
+use tokio::net::TcpListener;
 
 type SessionID = u16;
 type Session = ezsockets::Session<SessionID, ()>;
@@ -71,8 +73,16 @@ impl ezsockets::SessionExt for EchoSession {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
+    let der = include_bytes!("../identity.p12");
+    let cert = Identity::from_pkcs12(der, "mypass").unwrap();
+    let tls_acceptor = tokio_native_tls::TlsAcceptor::from(
+        native_tls::TlsAcceptor::builder(cert).build().unwrap(),
+    );
+    let tls_acceptor = ezsockets::tungstenite::Acceptor::NativeTls(tls_acceptor);
+
     let (server, _) = Server::create(|_server| EchoServer {});
-    ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_| async move { Ok(()) })
+    let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
+    ezsockets::tungstenite::run_on(server, listener, tls_acceptor, |_| async move { Ok(()) })
         .await
         .unwrap();
 }

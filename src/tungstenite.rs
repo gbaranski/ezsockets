@@ -1,22 +1,36 @@
 //! `tungstenite` feature must be enabled in order to use this module.
 //!
-//! ```ignore
-//! struct EchoServer {}
+//! ```no_run
+//! # use async_trait::async_trait;
+//! # struct MySession {}
+//! # #[async_trait::async_trait]
+//! # impl ezsockets::SessionExt for MySession {
+//! #   type ID = u16;
+//! #   type Args = ();
+//! #   type Call = ();
+//! #   fn id(&self) -> &Self::ID { unimplemented!() }
+//! #   async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! #   async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! #   async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! # }
+//! struct MyServer {}
 //!
 //! #[async_trait]
-//! impl ezsockets::ServerExt for EchoServer {
-//!     // ...
+//! impl ezsockets::ServerExt for MyServer {
+//!    // ...
+//!    # type Session = MySession;
+//!    # type Call = ();
+//!    # async fn on_connect(&mut self, socket: ezsockets::Socket, address: std::net::SocketAddr, _args: ()) -> Result<ezsockets::Session<u16, ()>, ezsockets::Error> { unimplemented!() }
+//!    # async fn on_disconnect(&mut self, id: <Self::Session as ezsockets::SessionExt>::ID) -> Result<(), ezsockets::Error> { unimplemented!() }
+//!    # async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
 //! }
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let (server, _) = ezsockets::Server::create(|_| EchoServer {});
-//!     ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_socket| async move { Ok(()) })
-//!         .await
-//!         .unwrap();
+//!     let (server, _) = ezsockets::Server::create(|_| MyServer {});
+//!     ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_socket| async move { Ok(()) }).await.unwrap();
 //! }
 //! ```
-//!
 
 use crate::socket::RawMessage;
 use crate::CloseCode;
@@ -129,8 +143,79 @@ cfg_if::cfg_if! {
 
         use tokio::net::TcpListener;
         use tokio::net::ToSocketAddrs;
+        use tokio::net::TcpStream;
         use futures::Future;
 
+        pub enum Acceptor {
+            Plain,
+            #[cfg(feature = "native-tls")]
+            NativeTls(tokio_native_tls::TlsAcceptor),
+            #[cfg(feature = "rustls")]
+            Rustls(tokio_rustls::TlsAcceptor),
+        }
+
+        impl Acceptor {
+            async fn accept(&self, stream: TcpStream) -> Result<Socket, Error> {
+                let socket = match self {
+                    Acceptor::Plain => {
+                        let socket = tokio_tungstenite::accept_async(stream).await?;
+                        Socket::new(socket, socket::Config::default())
+                    }
+                    #[cfg(feature = "native-tls")]
+                    Acceptor::NativeTls(acceptor) => {
+                        let tls_stream = acceptor.accept(stream).await?;
+                        let socket = tokio_tungstenite::accept_async(tls_stream).await?;
+                        Socket::new(socket, socket::Config::default())
+                    }
+                    #[cfg(feature = "rustls")]
+                    Acceptor::Rustls(acceptor) => {
+                        let tls_stream = acceptor.accept(stream).await?;
+                        let socket = tokio_tungstenite::accept_async(tls_stream).await?;
+                        Socket::new(socket, socket::Config::default())
+                    }
+                };
+                Ok(socket)
+            }
+        }
+
+        async fn run_acceptor<E, GetArgsFut>(
+            server: Server<E>,
+            listener: TcpListener,
+            acceptor: Acceptor,
+            get_args: impl Fn(&mut Socket) -> GetArgsFut
+        ) -> Result<(), Error>
+        where
+            E: ServerExt + 'static,
+            GetArgsFut: Future<Output = Result<<E::Session as SessionExt>::Args, Error>>
+        {
+            loop {
+                // TODO: Find a better way without those stupid matches
+                let (stream, address) = match listener.accept().await {
+                    Ok(stream) => stream,
+                    Err(err) => {
+                        tracing::error!("failed to accept tcp connection: {err}");
+                        continue;
+                    },
+                };
+                let mut socket = match acceptor.accept(stream).await {
+                    Ok(socket) => socket,
+                    Err(err) => {
+                        tracing::error!(%address, "failed to accept websocket connection: {err}");
+                        continue;
+                    }
+                };
+                let args = match get_args(&mut socket).await {
+                    Ok(socket) => socket,
+                    Err(err) => {
+                        tracing::error!(%address, "failed to get session args: {err}");
+                        continue;
+                    }
+                };
+                server.accept(socket, address, args).await;
+            }
+        }
+
+        // Run the server
         pub async fn run<E, A, GetArgsFut>(
             server: Server<E>,
             address: A,
@@ -142,31 +227,22 @@ cfg_if::cfg_if! {
             GetArgsFut: Future<Output = Result<<E::Session as SessionExt>::Args, Error>>
         {
             let listener = TcpListener::bind(address).await?;
-            loop {
-                let (socket, address) = listener.accept().await?;
-                let socket = tokio_tungstenite::accept_async(socket).await?;
-                let mut socket = Socket::new(socket, socket::Config::default());
-                let args = get_args(&mut socket).await?;
-                server.accept(socket, address, args).await;
-            }
+            run_acceptor(server, listener, Acceptor::Plain, get_args).await
         }
 
+        /// Run the server on custom `Listener` and `Acceptor`
+        /// For default acceptor use `Acceptor::plain`
         pub async fn run_on<E, GetArgsFut>(
             server: Server<E>,
             listener: TcpListener,
+            acceptor: Acceptor,
             get_args: impl Fn(&mut Socket) -> GetArgsFut
         ) -> Result<(), Error>
         where
             E: ServerExt + 'static,
             GetArgsFut: Future<Output = Result<<E::Session as SessionExt>::Args, Error>>
         {
-            loop {
-                let (socket, address) = listener.accept().await?;
-                let socket = tokio_tungstenite::accept_async(socket).await?;
-                let mut socket = Socket::new(socket, socket::Config::default());
-                let args = get_args(&mut socket).await?;
-                server.accept(socket, address, args).await;
-            }
+            run_acceptor(server, listener, acceptor, get_args).await
         }
     }
 }

@@ -31,10 +31,10 @@ struct ChatServer {
 
 #[async_trait]
 impl ezsockets::ServerExt for ChatServer {
-    type Params = Message;
+    type Call = Message;
     type Session = SessionActor;
 
-    async fn accept(
+    async fn on_connect(
         &mut self,
         socket: Socket,
         _address: SocketAddr,
@@ -55,7 +55,7 @@ impl ezsockets::ServerExt for ChatServer {
         Ok(session)
     }
 
-    async fn disconnected(
+    async fn on_disconnect(
         &mut self,
         id: <Self::Session as ezsockets::SessionExt>::ID,
     ) -> Result<(), Error> {
@@ -70,8 +70,8 @@ impl ezsockets::ServerExt for ChatServer {
         Ok(())
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
-        match params {
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
+        match call {
             Message::Send { from, room, text } => {
                 let (ids, sessions): (Vec<SessionID>, Vec<&Session>) = self
                     .rooms
@@ -133,13 +133,13 @@ struct SessionActor {
 impl ezsockets::SessionExt for SessionActor {
     type ID = SessionID;
     type Args = ();
-    type Params = ();
+    type Call = ();
 
     fn id(&self) -> &Self::ID {
         &self.id
     }
 
-    async fn text(&mut self, text: String) -> Result<(), Error> {
+    async fn on_text(&mut self, text: String) -> Result<(), Error> {
         tracing::info!("received: {text}");
         if text.starts_with('/') {
             let mut args = text.split_whitespace();
@@ -162,12 +162,12 @@ impl ezsockets::SessionExt for SessionActor {
         Ok(())
     }
 
-    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
+    async fn on_binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
         unimplemented!()
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
-        let () = params;
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
+        let () = call;
         Ok(())
     }
 }

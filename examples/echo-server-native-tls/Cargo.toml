@@ -1,5 +1,5 @@
 [package]
-name = "ezsockets-simple-client"
+name = "ezsocket-echo-server-native-tls"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,8 +7,9 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1.52"
-ezsockets = { path = "../../", features = ["rustls"] }
+ezsockets = { path = "../../", features = ["tungstenite", "native-tls"] }
+native-tls = "0.2.11"
 tokio = { version = "1.17.0", features = ["full"] }
+tokio-native-tls = "0.3.1"
 tracing = "0.1.32"
 tracing-subscriber = "0.3.9"
-url = "2.2.2"

@@ -27,9 +27,9 @@ struct ChatServer {
 #[async_trait]
 impl ezsockets::ServerExt for ChatServer {
     type Session = ChatSession;
-    type Params = ChatMessage;
+    type Call = ChatMessage;
 
-    async fn accept(
+    async fn on_connect(
         &mut self,
         socket: Socket,
         _address: SocketAddr,
@@ -48,7 +48,7 @@ impl ezsockets::ServerExt for ChatServer {
         Ok(session)
     }
 
-    async fn disconnected(
+    async fn on_disconnect(
         &mut self,
         id: <Self::Session as ezsockets::SessionExt>::ID,
     ) -> Result<(), Error> {
@@ -56,8 +56,8 @@ impl ezsockets::ServerExt for ChatServer {
         Ok(())
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
-        match params {
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
+        match call {
             ChatMessage::Send { text, from } => {
                 let sessions = self.sessions.iter().filter(|(id, _)| from != **id);
                 let text = format!("from {from}: {text}");
@@ -80,12 +80,12 @@ struct ChatSession {
 impl ezsockets::SessionExt for ChatSession {
     type ID = SessionID;
     type Args = ();
-    type Params = ();
+    type Call = ();
 
     fn id(&self) -> &Self::ID {
         &self.id
     }
-    async fn text(&mut self, text: String) -> Result<(), Error> {
+    async fn on_text(&mut self, text: String) -> Result<(), Error> {
         tracing::info!("received: {text}");
         self.server.call(ChatMessage::Send {
             from: self.id,
@@ -94,12 +94,12 @@ impl ezsockets::SessionExt for ChatSession {
         Ok(())
     }
 
-    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
+    async fn on_binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
         unimplemented!()
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), Error> {
-        let () = params;
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
+        let () = call;
         Ok(())
     }
 }

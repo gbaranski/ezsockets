@@ -1,13 +1,16 @@
+//! # WebSocket Server
 //! ## Get started
 //!
 //! To create a simple echo server, we need to define a `Session` struct.
 //! The code below represents a simple echo server.
 //!
-//! ```ignore
+//! ```
 //! use async_trait::async_trait;
-//! use ezsockets::Session;
+//!
+//! // Create our own session that implements `SessionExt`
 //!
 //! type SessionID = u16;
+//! type Session = ezsockets::Session<SessionID, ()>;
 //!
 //! struct EchoSession {
 //!     handle: Session,
@@ -18,35 +21,33 @@
 //! impl ezsockets::SessionExt for EchoSession {
 //!     type ID = SessionID;
 //!     type Args = ();
-//!     type Params = ();
+//!     type Call = ();
 //!
 //!     fn id(&self) -> &Self::ID {
 //!         &self.id
 //!     }
 //!
-//!     async fn text(&mut self, text: String) -> Result<(), ezsockets::Error> {
+//!     // Define handlers for incoming messages
+//!
+//!     async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> {
 //!         self.handle.text(text); // Send response to the client
 //!         Ok(())
 //!     }
 //!
-//!     async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
+//!     async fn on_binary(&mut self, _bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
 //!         unimplemented!()
 //!     }
 //!
-//!     async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-//!         let () = params;
+//!     // `on_call` is for custom messages, it's useful if you want to send messages from other thread or tokio task. Use `Session::call` to send a message.
+//!     async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
+//!         let () = call;
 //!         Ok(())
 //!     }
 //! }
-//! ```
 //!
-//! Then, we need to define a `Server` struct
+//! // Create our own server that implements `ServerExt`
 //!
-//!
-//! ```ignore
-//! use async_trait::async_trait;
 //! use ezsockets::Server;
-//! use ezsockets::Session;
 //! use ezsockets::Socket;
 //! use std::net::SocketAddr;
 //!
@@ -55,9 +56,9 @@
 //! #[async_trait]
 //! impl ezsockets::ServerExt for EchoServer {
 //!     type Session = EchoSession;
-//!     type Params = ();
+//!     type Call = ();
 //!
-//!     async fn accept(
+//!     async fn on_connect(
 //!         &mut self,
 //!         socket: Socket,
 //!         address: SocketAddr,
@@ -68,15 +69,15 @@
 //!         Ok(session)
 //!     }
 //!
-//!     async fn disconnected(
+//!     async fn on_disconnect(
 //!         &mut self,
 //!         _id: <Self::Session as ezsockets::SessionExt>::ID,
 //!     ) -> Result<(), ezsockets::Error> {
 //!         Ok(())
 //!     }
 //!
-//!     async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-//!         let () = params;
+//!     async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
+//!         let () = call;
 //!         Ok(())
 //!     }
 //! }
@@ -112,7 +113,7 @@ struct Disconnected<E: ServerExt> {
 struct ServerActor<E: ServerExt> {
     connections: mpsc::UnboundedReceiver<NewConnection<E>>,
     disconnections: mpsc::UnboundedReceiver<Disconnected<E>>,
-    calls: mpsc::UnboundedReceiver<E::Params>,
+    calls: mpsc::UnboundedReceiver<E::Call>,
     server: Server<E>,
     extension: E,
 }
@@ -127,7 +128,7 @@ where
         loop {
             tokio::select! {
                 Some(NewConnection{socket, address, args, respond_to}) = self.connections.recv() => {
-                    let session = self.extension.accept(socket, address, args).await?;
+                    let session = self.extension.on_connect(socket, address, args).await?;
                     let session_id = session.id.clone();
                     tracing::info!("connection from {address} accepted");
                     respond_to.send(session_id.clone()).unwrap();
@@ -141,7 +142,7 @@ where
                     });
                 }
                 Some(Disconnected{id, result}) = self.disconnections.recv() => {
-                    self.extension.disconnected(id.clone()).await?;
+                    self.extension.on_disconnect(id.clone()).await?;
                     match result {
                         Ok(Some(CloseFrame { code, reason })) => {
                             tracing::info!(%id, ?code, %reason, "connection closed")
@@ -150,8 +151,8 @@ where
                         Err(err) => tracing::warn!(%id, "connection closed due to: {err}"),
                     };
                 }
-                Some(params) = self.calls.recv() => {
-                    self.extension.call(params).await?
+                Some(call) = self.calls.recv() => {
+                    self.extension.on_call(call).await?
                 }
                 else => break
             }
@@ -162,30 +163,38 @@ where
 
 #[async_trait]
 pub trait ServerExt: Send {
+    /// Type of the session that will be created for each connection.
     type Session: SessionExt;
-    type Params: Send + std::fmt::Debug;
+    /// Type the custom call - parameters passed to `on_call`.
+    type Call: Send + std::fmt::Debug;
 
-    async fn accept(
+    /// Called when client connects to the server.
+    /// Here you should create a `Session` with your own implementation of `SessionExt` and return it.
+    ///If you don't want to accept the connection, return an error.
+    async fn on_connect(
         &mut self,
         socket: Socket,
         address: SocketAddr,
         args: <Self::Session as SessionExt>::Args,
     ) -> Result<
-        Session<<Self::Session as SessionExt>::ID, <Self::Session as SessionExt>::Params>,
+        Session<<Self::Session as SessionExt>::ID, <Self::Session as SessionExt>::Call>,
         Error,
     >;
-    async fn disconnected(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), Error>;
-    async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
+    /// Called when client disconnects from the server.
+    async fn on_disconnect(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), Error>;
+    /// Handler for custom calls from other parts from your program.
+    /// This is useful for concurrency and polymorphism.
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
 }
 
 #[derive(Debug)]
 pub struct Server<E: ServerExt> {
     connections: mpsc::UnboundedSender<NewConnection<E>>,
     disconnections: mpsc::UnboundedSender<Disconnected<E>>,
-    calls: mpsc::UnboundedSender<E::Params>,
+    calls: mpsc::UnboundedSender<E::Call>,
 }
 
-impl<E: ServerExt> From<Server<E>> for mpsc::UnboundedSender<E::Params> {
+impl<E: ServerExt> From<Server<E>> for mpsc::UnboundedSender<E::Call> {
     fn from(server: Server<E>) -> Self {
         server.calls
     }
@@ -251,20 +260,20 @@ impl<E: ServerExt> Server<E> {
             .unwrap();
     }
 
-    pub fn call(&self, params: E::Params) {
-        self.calls.send(params).map_err(|_| ()).unwrap();
+    pub fn call(&self, call: E::Call) {
+        self.calls.send(call).map_err(|_| ()).unwrap();
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
-    /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
+    /// This is just for easier construction of the call which happen to contain oneshot::Sender in it.
     pub async fn call_with<R: std::fmt::Debug>(
         &self,
-        f: impl FnOnce(oneshot::Sender<R>) -> E::Params,
+        f: impl FnOnce(oneshot::Sender<R>) -> E::Call,
     ) -> R {
         let (sender, receiver) = oneshot::channel();
-        let params = f(sender);
+        let call = f(sender);
 
-        self.calls.send(params).unwrap();
+        self.calls.send(call).unwrap();
         receiver.await.unwrap()
     }
 }
