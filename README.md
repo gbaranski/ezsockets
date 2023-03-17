@@ -39,3 +39,11 @@ WebSocket server can use one of supported back-ends:
 
 See [examples/echo-server](https://github.com/gbaranski/ezsockets/tree/master/examples/echo-server) for a simple usage
 and [docs.rs/ezsockets/server](https://docs.rs/ezsockets/latest/ezsockets/server/index.html) for documentation.
+
+# License
+
+Licensed under [MIT](https://choosealicense.com/licenses/mit/).
+
+# Contact
+
+Reach me out on Discord `gbaranski#5119`, or mail me at me@gbaranski.com.
