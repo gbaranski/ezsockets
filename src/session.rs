@@ -32,14 +32,14 @@ pub trait SessionExt: Send {
 type CloseReceiver = oneshot::Receiver<Result<Option<CloseFrame>, Error>>;
 
 #[derive(Debug)]
-pub struct Session<I: std::fmt::Display + Clone, P: std::fmt::Debug> {
+pub struct Session<I: std::fmt::Display + Clone, C: std::fmt::Debug> {
     pub id: I,
     socket: mpsc::UnboundedSender<Message>,
-    calls: mpsc::UnboundedSender<P>,
+    calls: mpsc::UnboundedSender<C>,
     closed: Arc<Mutex<Option<CloseReceiver>>>,
 }
 
-impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> std::clone::Clone for Session<I, P> {
+impl<I: std::fmt::Display + Clone, C: std::fmt::Debug> std::clone::Clone for Session<I, C> {
     fn clone(&self) -> Self {
         Self {
             id: self.id.clone(),
@@ -50,9 +50,9 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> std::clone::Clone for Ses
     }
 }
 
-impl<I: std::fmt::Display + Clone + Send, P: std::fmt::Debug + Send> Session<I, P> {
-    pub fn create<S: SessionExt<ID = I, Call = P> + 'static>(
-        session_fn: impl FnOnce(Session<I, P>) -> S,
+impl<I: std::fmt::Display + Clone + Send, C: std::fmt::Debug + Send> Session<I, C> {
+    pub fn create<S: SessionExt<ID = I, Call = C> + 'static>(
+        session_fn: impl FnOnce(Session<I, C>) -> S,
         session_id: I,
         socket: Socket,
     ) -> Self {
@@ -78,7 +78,7 @@ impl<I: std::fmt::Display + Clone + Send, P: std::fmt::Debug + Send> Session<I, 
     }
 }
 
-impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
+impl<I: std::fmt::Display + Clone, C: std::fmt::Debug> Session<I, C> {
     #[doc(hidden)]
     /// WARN: Use only if really nessesary.
     ///
@@ -111,7 +111,7 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
     }
 
     /// Calls a method on the session
-    pub fn call(&self, call: P) {
+    pub fn call(&self, call: C) {
         self.calls
             .send(call)
             .unwrap_or_else(|_| panic!("Session::call {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
@@ -121,7 +121,7 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
     /// This is just for easier construction of the call which happen to contain oneshot::Sender in it.
     pub async fn call_with<R: std::fmt::Debug>(
         &self,
-        f: impl FnOnce(oneshot::Sender<R>) -> P,
+        f: impl FnOnce(oneshot::Sender<R>) -> C,
     ) -> R {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
