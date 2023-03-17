@@ -34,6 +34,9 @@ server = []
 tungstenite = ["server", "tokio-tungstenite"]
 axum = ["server", "axum_crate"]
 
+native-tls = ["tokio-tungstenite/native-tls"]
+rustls = ["tokio-tungstenite/rustls"]
+
 [dev-dependencies]
 tokio = { version = "1.17.0", features = ["full"] }
 tracing-subscriber = "0.3.9"
