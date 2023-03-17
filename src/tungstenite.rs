@@ -1,22 +1,36 @@
 //! `tungstenite` feature must be enabled in order to use this module.
 //!
-//! ```ignore
-//! struct EchoServer {}
+//! ```no_run
+//! # use async_trait::async_trait;
+//! # struct MySession {}
+//! # #[async_trait::async_trait]
+//! # impl ezsockets::SessionExt for MySession {
+//! #   type ID = u16;
+//! #   type Args = ();
+//! #   type Call = ();
+//! #   fn id(&self) -> &Self::ID { unimplemented!() }
+//! #   async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! #   async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! #   async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! # }
+//! struct MyServer {}
 //!
 //! #[async_trait]
-//! impl ezsockets::ServerExt for EchoServer {
-//!     // ...
+//! impl ezsockets::ServerExt for MyServer {
+//!    // ...
+//!    # type Session = MySession;
+//!    # type Call = ();
+//!    # async fn on_connect(&mut self, socket: ezsockets::Socket, address: std::net::SocketAddr, _args: ()) -> Result<ezsockets::Session<u16, ()>, ezsockets::Error> { unimplemented!() }
+//!    # async fn on_disconnect(&mut self, id: <Self::Session as ezsockets::SessionExt>::ID) -> Result<(), ezsockets::Error> { unimplemented!() }
+//!    # async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
 //! }
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let (server, _) = ezsockets::Server::create(|_| EchoServer {});
-//!     ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_socket| async move { Ok(()) })
-//!         .await
-//!         .unwrap();
+//!     let (server, _) = ezsockets::Server::create(|_| MyServer {});
+//!     ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_socket| async move { Ok(()) }).await.unwrap();
 //! }
 //! ```
-//!
 
 use crate::socket::RawMessage;
 use crate::CloseCode;

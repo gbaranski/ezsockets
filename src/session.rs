@@ -11,28 +11,35 @@ use tokio::sync::Mutex;
 
 #[async_trait]
 pub trait SessionExt: Send {
+    /// Custom identification number of SessionExt, usually a number or a string.
     type ID: Send + Sync + Clone + std::fmt::Debug + std::fmt::Display;
     /// Arguments passed for creating a new session on server.
     type Args: std::fmt::Debug + Send;
-    type Params: std::fmt::Debug + Send;
+    /// Type the custom call - parameters passed to `on_call`.
+    type Call: std::fmt::Debug + Send;
 
+    /// Returns ID of the session.
     fn id(&self) -> &Self::ID;
-    async fn text(&mut self, text: String) -> Result<(), Error>;
-    async fn binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
-    async fn call(&mut self, params: Self::Params) -> Result<(), Error>;
+    /// Handler for text messages from the client.
+    async fn on_text(&mut self, text: String) -> Result<(), Error>;
+    /// Handler for binary messages from the client.
+    async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
+    /// Handler for custom calls from other parts from your program.
+    /// This is useful for concurrency and polymorphism.
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
 }
 
 type CloseReceiver = oneshot::Receiver<Result<Option<CloseFrame>, Error>>;
 
 #[derive(Debug)]
-pub struct Session<I: std::fmt::Display + Clone, P: std::fmt::Debug> {
+pub struct Session<I: std::fmt::Display + Clone, C: std::fmt::Debug> {
     pub id: I,
     socket: mpsc::UnboundedSender<Message>,
-    calls: mpsc::UnboundedSender<P>,
+    calls: mpsc::UnboundedSender<C>,
     closed: Arc<Mutex<Option<CloseReceiver>>>,
 }
 
-impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> std::clone::Clone for Session<I, P> {
+impl<I: std::fmt::Display + Clone, C: std::fmt::Debug> std::clone::Clone for Session<I, C> {
     fn clone(&self) -> Self {
         Self {
             id: self.id.clone(),
@@ -43,9 +50,9 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> std::clone::Clone for Ses
     }
 }
 
-impl<I: std::fmt::Display + Clone + Send, P: std::fmt::Debug + Send> Session<I, P> {
-    pub fn create<S: SessionExt<ID = I, Params = P> + 'static>(
-        session_fn: impl FnOnce(Session<I, P>) -> S,
+impl<I: std::fmt::Display + Clone + Send, C: std::fmt::Debug + Send> Session<I, C> {
+    pub fn create<S: SessionExt<ID = I, Call = C> + 'static>(
+        session_fn: impl FnOnce(Session<I, C>) -> S,
         session_id: I,
         socket: Socket,
     ) -> Self {
@@ -71,7 +78,7 @@ impl<I: std::fmt::Display + Clone + Send, P: std::fmt::Debug + Send> Session<I, 
     }
 }
 
-impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
+impl<I: std::fmt::Display + Clone, C: std::fmt::Debug> Session<I, C> {
     #[doc(hidden)]
     /// WARN: Use only if really nessesary.
     ///
@@ -104,22 +111,22 @@ impl<I: std::fmt::Display + Clone, P: std::fmt::Debug> Session<I, P> {
     }
 
     /// Calls a method on the session
-    pub fn call(&self, params: P) {
+    pub fn call(&self, call: C) {
         self.calls
-            .send(params)
+            .send(call)
             .unwrap_or_else(|_| panic!("Session::call {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
-    /// This is just for easier construction of the Params which happen to contain oneshot::Sender in it.
+    /// This is just for easier construction of the call which happen to contain oneshot::Sender in it.
     pub async fn call_with<R: std::fmt::Debug>(
         &self,
-        f: impl FnOnce(oneshot::Sender<R>) -> P,
+        f: impl FnOnce(oneshot::Sender<R>) -> C,
     ) -> R {
         let (sender, receiver) = oneshot::channel();
-        let params = f(sender);
+        let call = f(sender);
 
-        self.calls.send(params).unwrap();
+        self.calls.send(call).unwrap();
         receiver.await.unwrap()
     }
 }
@@ -128,7 +135,7 @@ pub(crate) struct SessionActor<E: SessionExt> {
     pub extension: E,
     id: E::ID,
     socket_receiver: mpsc::UnboundedReceiver<Message>,
-    call_receiver: mpsc::UnboundedReceiver<E::Params>,
+    call_receiver: mpsc::UnboundedReceiver<E::Call>,
     socket: Socket,
 }
 
@@ -137,7 +144,7 @@ impl<E: SessionExt> SessionActor<E> {
         extension: E,
         id: E::ID,
         socket_receiver: mpsc::UnboundedReceiver<Message>,
-        call_receiver: mpsc::UnboundedReceiver<E::Params>,
+        call_receiver: mpsc::UnboundedReceiver<E::Call>,
         socket: Socket,
     ) -> Self {
         Self {
@@ -159,14 +166,14 @@ impl<E: SessionExt> SessionActor<E> {
                         return Ok(frame)
                     }
                 }
-                Some(params) = self.call_receiver.recv() => {
-                    self.extension.call(params).await?;
+                Some(call) = self.call_receiver.recv() => {
+                    self.extension.on_call(call).await?;
                 }
                 message = self.socket.recv() => {
                     match message {
                         Some(Ok(message)) => match message {
-                            Message::Text(text) => self.extension.text(text).await?,
-                            Message::Binary(bytes) => self.extension.binary(bytes).await?,
+                            Message::Text(text) => self.extension.on_text(text).await?,
+                            Message::Binary(bytes) => self.extension.on_binary(bytes).await?,
                             Message::Close(frame) => {
                                 return Ok(frame.map(CloseFrame::from))
                             },

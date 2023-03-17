@@ -11,9 +11,9 @@ struct EchoServer {}
 #[async_trait]
 impl ezsockets::ServerExt for EchoServer {
     type Session = EchoSession;
-    type Params = ();
+    type Call = ();
 
-    async fn accept(
+    async fn on_connect(
         &mut self,
         socket: ezsockets::Socket,
         address: SocketAddr,
@@ -24,15 +24,15 @@ impl ezsockets::ServerExt for EchoServer {
         Ok(session)
     }
 
-    async fn disconnected(
+    async fn on_disconnect(
         &mut self,
         _id: <Self::Session as ezsockets::SessionExt>::ID,
     ) -> Result<(), ezsockets::Error> {
         Ok(())
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-        let () = params;
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
+        let () = call;
         Ok(())
     }
 }
@@ -46,23 +46,23 @@ struct EchoSession {
 impl ezsockets::SessionExt for EchoSession {
     type ID = SessionID;
     type Args = ();
-    type Params = ();
+    type Call = ();
 
     fn id(&self) -> &Self::ID {
         &self.id
     }
 
-    async fn text(&mut self, text: String) -> Result<(), ezsockets::Error> {
+    async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> {
         self.handle.text(text);
         Ok(())
     }
 
-    async fn binary(&mut self, _bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
+    async fn on_binary(&mut self, _bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
         unimplemented!()
     }
 
-    async fn call(&mut self, params: Self::Params) -> Result<(), ezsockets::Error> {
-        let () = params;
+    async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
+        let () = call;
         Ok(())
     }
 }
