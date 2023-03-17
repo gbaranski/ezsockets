@@ -129,6 +129,7 @@ cfg_if::cfg_if! {
 
         use tokio::net::TcpListener;
         use tokio::net::ToSocketAddrs;
+        use tokio::net::TcpStream;
         use futures::Future;
 
         pub enum Acceptor {
@@ -229,13 +230,5 @@ cfg_if::cfg_if! {
         {
             run_acceptor(server, listener, acceptor, get_args).await
         }
-    }
-}
-
-cfg_if::cfg_if! {
-    if #[cfg(all(feature = "server", feature = "tls"))] {
-
-        use tokio::net::TcpStream;
-
     }
 }
