@@ -2,9 +2,11 @@
 
 Creating a WebSocket server or a client in Rust can be troublesome. This crate facilitates this process by providing:
 
-- High-level abstraction of WebSocket, handling Ping/Pong from both Client and Server.
 - Traits to allow declarative and event-based programming.
+- Heartbeat mechanism to keep the connection alive.
 - Automatic reconnection of WebSocket Client.
+- Support for multiple back-ends such as Axum or Tungstenite.
+- TLS support for servers with `rustls` and `native-tls`.
 
 ## Documentation
 
