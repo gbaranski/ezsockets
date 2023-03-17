@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 |`ClientExt::text(...)`| `ClientExt::on_text(...)`|
 |`ClientExt::binary(...)`| `ClientExt::on_binary(...)`|
 |`ClientExt::call(...)`| `ClientExt::on_call(...)`|
-|`ClientExt::connected(...)`| `ClientExt::on_connected(...)`|
+|`ClientExt::connected(...)`| `ClientExt::on_connect(...)`|
 |`ClientExt::closed(...)`| `ClientExt::closed(...)`|
 |-|-|
 |`ServerExt::Params`| `ServerExt::Call`|
