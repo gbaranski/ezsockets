@@ -38,6 +38,7 @@ use crate::CloseFrame;
 use crate::Message;
 use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
+use crate::tungstenite::tungstenite::handshake::server::{NoCallback, Callback, ErrorResponse};
 
 impl<'t> From<tungstenite::protocol::CloseFrame<'t>> for CloseFrame {
     fn from(frame: tungstenite::protocol::CloseFrame) -> Self {
@@ -122,6 +123,7 @@ impl From<tungstenite::Message> for RawMessage {
         }
     }
 }
+
 impl From<Message> for tungstenite::Message {
     fn from(message: Message) -> Self {
         match message {
@@ -156,24 +158,38 @@ cfg_if::cfg_if! {
 
         impl Acceptor {
             async fn accept(&self, stream: TcpStream) -> Result<Socket, Error> {
-                let socket = match self {
+                 let mut req0 = None;
+                 let callback = |req: &http::Request<()>, resp: http::Response<()>| -> Result<http::Response<()>, ErrorResponse> {
+                    let mut req1 = http::Request::builder()
+                    .method(req.method().clone())
+                    .uri(req.uri().clone())
+                    .version(req.version());
+                    for (k, v) in req.headers() {
+                        req1 = req1.header(k, v);
+                    }
+
+                    req0 = Some(req1.body(()).unwrap());
+                    NoCallback.on_request(req, resp)
+                };
+                let mut socket = match self {
                     Acceptor::Plain => {
-                        let socket = tokio_tungstenite::accept_async(stream).await?;
+                        let socket = tokio_tungstenite::accept_hdr_async(stream, callback).await?;
                         Socket::new(socket, socket::Config::default())
                     }
                     #[cfg(feature = "native-tls")]
                     Acceptor::NativeTls(acceptor) => {
                         let tls_stream = acceptor.accept(stream).await?;
-                        let socket = tokio_tungstenite::accept_async(tls_stream).await?;
+                        let socket = tokio_tungstenite::accept_hdr_async(tls_stream, callback).await?;
                         Socket::new(socket, socket::Config::default())
                     }
                     #[cfg(feature = "rustls")]
                     Acceptor::Rustls(acceptor) => {
                         let tls_stream = acceptor.accept(stream).await?;
-                        let socket = tokio_tungstenite::accept_async(tls_stream).await?;
+                        let socket = tokio_tungstenite::accept_hdr_async(tls_stream, callback).await?;
                         Socket::new(socket, socket::Config::default())
                     }
                 };
+                socket.request = req0.unwrap();
                 Ok(socket)
             }
         }
