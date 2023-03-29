@@ -166,7 +166,7 @@ pub trait ServerExt: Send {
     /// Type of the session that will be created for each connection.
     type Session: SessionExt;
     /// Type the custom call - parameters passed to `on_call`.
-    type Call: Send + std::fmt::Debug;
+    type Call: Send;
 
     /// Called when client connects to the server.
     /// Here you should create a `Session` with your own implementation of `SessionExt` and return it.
@@ -273,7 +273,7 @@ impl<E: ServerExt> Server<E> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        self.calls.send(call).unwrap();
+        self.calls.send(call).map_err(|_| ()).unwrap();
         receiver.await.unwrap()
     }
 }
