@@ -50,7 +50,6 @@ impl ezsockets::ServerExt for ChatServer {
         &mut self,
         socket: Socket,
         _address: SocketAddr,
-        _args: <Self::Session as ezsockets::SessionExt>::Args,
     ) -> Result<Session, Error> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session::create(
@@ -151,7 +150,6 @@ pub struct SessionActor {
 #[async_trait]
 impl ezsockets::SessionExt for SessionActor {
     type ID = SessionID;
-    type Args = ();
     type Call = ();
 
     fn id(&self) -> &Self::ID {

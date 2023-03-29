@@ -13,7 +13,6 @@
 //! # #[async_trait]
 //! # impl ezsockets::SessionExt for MySession {
 //! #   type ID = u16;
-//! #   type Args = ();
 //! #   type Call = ();
 //! #   fn id(&self) -> &Self::ID { unimplemented!() }
 //! #   async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> { unimplemented!() }
@@ -28,7 +27,7 @@
 //!     // ...
 //!    # type Session = MySession;
 //!    # type Call = ();
-//!    # async fn on_connect(&mut self, socket: ezsockets::Socket, address: std::net::SocketAddr, _args: ()) -> Result<ezsockets::Session<u16, ()>, ezsockets::Error> { unimplemented!() }
+//!    # async fn on_connect(&mut self, socket: ezsockets::Socket, address: std::net::SocketAddr) -> Result<ezsockets::Session<u16, ()>, ezsockets::Error> { unimplemented!() }
 //!    # async fn on_disconnect(&mut self, id: <Self::Session as ezsockets::SessionExt>::ID) -> Result<(), ezsockets::Error> { unimplemented!() }
 //!    # async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
 //! }
@@ -56,7 +55,7 @@
 //!     Extension(server): Extension<ezsockets::Server<EchoServer>>,
 //!     ezsocket: Upgrade,
 //! ) -> impl IntoResponse {
-//!     ezsocket.on_upgrade(server, ())
+//!     ezsocket.on_upgrade(server)c
 //! }
 //! ```
 
@@ -68,7 +67,6 @@ use crate::CloseFrame;
 use crate::RawMessage;
 use crate::Server;
 use crate::ServerExt;
-use crate::SessionExt;
 use crate::Socket;
 use async_trait::async_trait;
 use axum::extract::ws;
@@ -154,11 +152,10 @@ impl Upgrade {
     pub fn on_upgrade<E: ServerExt + 'static>(
         self,
         server: Server<E>,
-        args: <E::Session as SessionExt>::Args,
     ) -> Response {
         self.ws.on_upgrade(move |socket| async move {
             let socket = Socket::new(socket, Default::default()); // TODO: Make it really configurable via Extensions
-            server.accept(socket, self.address, args).await;
+            server.accept(socket, self.address).await;
         })
     }
 }

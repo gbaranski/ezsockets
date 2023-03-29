@@ -20,7 +20,6 @@
 //! #[async_trait]
 //! impl ezsockets::SessionExt for EchoSession {
 //!     type ID = SessionID;
-//!     type Args = ();
 //!     type Call = ();
 //!
 //!     fn id(&self) -> &Self::ID {
@@ -62,7 +61,6 @@
 //!         &mut self,
 //!         socket: Socket,
 //!         address: SocketAddr,
-//!         _args: (),
 //!     ) -> Result<Session, ezsockets::Error> {
 //!         let id = address.port();
 //!         let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
@@ -101,7 +99,6 @@ use tokio::sync::oneshot;
 struct NewConnection<E: ServerExt> {
     socket: Socket,
     address: SocketAddr,
-    args: <E::Session as SessionExt>::Args,
     respond_to: oneshot::Sender<<E::Session as SessionExt>::ID>,
 }
 
@@ -127,8 +124,8 @@ where
         tracing::info!("starting server");
         loop {
             tokio::select! {
-                Some(NewConnection{socket, address, args, respond_to}) = self.connections.recv() => {
-                    let session = self.extension.on_connect(socket, address, args).await?;
+                Some(NewConnection{socket, address, respond_to}) = self.connections.recv() => {
+                    let session = self.extension.on_connect(socket, address).await?;
                     let session_id = session.id.clone();
                     tracing::info!("connection from {address} accepted");
                     respond_to.send(session_id.clone()).unwrap();
@@ -175,7 +172,6 @@ pub trait ServerExt: Send {
         &mut self,
         socket: Socket,
         address: SocketAddr,
-        args: <Self::Session as SessionExt>::Args,
     ) -> Result<
         Session<<Self::Session as SessionExt>::ID, <Self::Session as SessionExt>::Call>,
         Error,
@@ -234,14 +230,13 @@ impl<E: ServerExt> Server<E> {
         &self,
         socket: Socket,
         address: SocketAddr,
-        args: <E::Session as SessionExt>::Args,
     ) -> <E::Session as SessionExt>::ID {
+        // TODO: can we refuse the connection here?
         let (sender, receiver) = oneshot::channel();
         self.connections
             .send(NewConnection {
                 socket,
                 address,
-                args,
                 respond_to: sender,
             })
             .map_err(|_| ())

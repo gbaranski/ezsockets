@@ -38,7 +38,6 @@ impl ezsockets::ServerExt for ChatServer {
         &mut self,
         socket: Socket,
         _address: SocketAddr,
-        _args: <Self::Session as ezsockets::SessionExt>::Args,
     ) -> Result<Session, Error> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session::create(
@@ -132,7 +131,6 @@ struct SessionActor {
 #[async_trait]
 impl ezsockets::SessionExt for SessionActor {
     type ID = SessionID;
-    type Args = ();
     type Call = ();
 
     fn id(&self) -> &Self::ID {
@@ -180,7 +178,7 @@ async fn main() {
         rooms: HashMap::from_iter([(DEFAULT_ROOM.to_string(), vec![])]),
         handle,
     });
-    ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_| async move { Ok(()) })
+    ezsockets::tungstenite::run(server, "127.0.0.1:8080")
         .await
         .unwrap();
 }

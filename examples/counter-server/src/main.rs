@@ -21,7 +21,6 @@ impl ezsockets::ServerExt for CounterServer {
         &mut self,
         socket: Socket,
         address: SocketAddr,
-        _args: (),
     ) -> Result<Session, Error> {
         let id = address.port();
         let session = Session::create(
@@ -85,7 +84,6 @@ enum Message {
 #[async_trait]
 impl ezsockets::SessionExt for CounterSession {
     type ID = SessionID;
-    type Args = ();
     type Call = Message;
 
     fn id(&self) -> &Self::ID {
@@ -114,7 +112,7 @@ impl ezsockets::SessionExt for CounterSession {
 async fn main() {
     tracing_subscriber::fmt::init();
     let (server, _) = Server::create(|_server| CounterServer {});
-    ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_| async move { Ok(()) })
+    ezsockets::tungstenite::run(server, "127.0.0.1:8080")
         .await
         .unwrap();
 }
