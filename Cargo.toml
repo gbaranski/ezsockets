@@ -23,6 +23,7 @@ url = "2.2.2"
 cfg-if = "1.0.0"
 
 axum_crate = { package = "axum", version = "0.6.1", features = ["ws"], optional = true }
+warp_crate = { package = "warp", version = "0.3.3", optional = true }
 tokio-tungstenite = { version = "0.18.0", optional = true }
 tokio-rustls = { version = "0.23.4", optional = true }
 tokio-native-tls = { version = "0.3.1", optional = true }
@@ -35,6 +36,7 @@ client = ["tokio-tungstenite"]
 server = []
 tungstenite = ["server", "tokio-tungstenite"]
 axum = ["server", "axum_crate"]
+warp = ["server", "warp_crate"]
 
 tls = []
 native-tls = ["tls", "tokio-native-tls", "tokio-tungstenite/native-tls"]
@@ -56,6 +58,7 @@ members = [
     "examples/chat-client",
     "examples/chat-server",
     "examples/chat-server-axum",
+    "examples/chat-server-warp",
     "examples/echo-server",
     "examples/echo-server-native-tls",
     "examples/simple-client",

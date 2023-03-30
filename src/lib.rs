@@ -18,6 +18,9 @@ pub use socket::Stream;
 #[cfg(feature = "axum")]
 pub mod axum;
 
+#[cfg(feature = "warp")]
+pub mod warp;
+
 #[cfg(feature = "tokio-tungstenite")]
 pub mod tungstenite;
 
