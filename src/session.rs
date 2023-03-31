@@ -103,16 +103,16 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     }
 
     /// Sends a Text message to the server
-    pub fn text(&self, text: String) {
+    pub fn text(&self, text: impl Into<String>) {
         self.socket
-            .send(Message::Text(text))
+            .send(Message::Text(text.into()))
             .unwrap_or_else(|_| panic!("Session::text {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Sends a Binary message to the server
-    pub fn binary(&self, bytes: Vec<u8>) {
+    pub fn binary(&self, bytes: impl Into<Vec<u8>>) {
         self.socket
-            .send(Message::Binary(bytes))
+            .send(Message::Binary(bytes.into()))
             .unwrap_or_else(|_| panic!("Session::binary {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
