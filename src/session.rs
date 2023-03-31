@@ -1,14 +1,13 @@
+use crate::server::Disconnected;
 use crate::Error;
 use crate::Message;
 use crate::Socket;
 use crate::{CloseCode, CloseFrame};
 use async_trait::async_trait;
 use std::fmt::Formatter;
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 #[async_trait]
@@ -33,7 +32,6 @@ pub struct Session<I, C> {
     pub id: I,
     socket: mpsc::UnboundedSender<Message>,
     calls: mpsc::UnboundedSender<C>,
-    pub(crate) jh: Arc<std::sync::Mutex<Option<JoinHandle<Result<Option<CloseFrame>, Error>>>>>,
 }
 
 impl<I: std::fmt::Debug, C> std::fmt::Debug for Session<I, C> {
@@ -50,12 +48,11 @@ impl<I: Clone, C> Clone for Session<I, C> {
             id: self.id.clone(),
             socket: self.socket.clone(),
             calls: self.calls.clone(),
-            jh: self.jh.clone(),
         }
     }
 }
 
-impl<I: std::fmt::Display + Clone + Send, C: Send> Session<I, C> {
+impl<I: std::fmt::Display + Clone + Send + 'static, C: Send> Session<I, C> {
     pub fn create<S: SessionExt<ID = I, Call = C> + 'static>(
         session_fn: impl FnOnce(Session<I, C>) -> S,
         session_id: I,
@@ -68,7 +65,6 @@ impl<I: std::fmt::Display + Clone + Send, C: Send> Session<I, C> {
             id: session_id.clone(),
             socket: socket_sender,
             calls: call_sender,
-            jh: Arc::new(std::sync::Mutex::new(None)),
         };
         let session = session_fn(handle.clone());
         let actor = SessionActor {
@@ -78,8 +74,12 @@ impl<I: std::fmt::Display + Clone + Send, C: Send> Session<I, C> {
             call_receiver,
             socket,
         };
-        let jh = tokio::spawn(actor.run());
-        *handle.jh.lock().unwrap() = Some(jh);
+        tokio::spawn(async move {
+            let tx = actor.socket.disconnected.clone().unwrap();
+            let id = actor.id.clone();
+            let result = actor.run().await;
+            tx.send(Box::new(Disconnected::<I> { id, result }))
+        });
         handle
     }
 }
@@ -146,19 +146,24 @@ impl<E: SessionExt> SessionActor<E> {
                          self.socket.sink.send(Message::Close(Some(CloseFrame {
                             code: CloseCode::Normal,
                             reason: String::from("client didn't respond to Ping frame"),
-                        })))?;
+                        }))).await?;
                         break;
                     }
                     // Use chrono Utc::now()
                     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
                     let timestamp = timestamp.as_millis();
                     let bytes = timestamp.to_be_bytes();
-                    self.socket.sink.send(Message::Ping(bytes.to_vec()))?;
+                    self.socket.sink.send(Message::Ping(bytes.to_vec())).await?;
                 }
                 Some(message) = self.socket_receiver.recv() => {
-                    self.socket.sink.send(message.clone())?;
-                    if let Message::Close(frame) = message {
-                        return Ok(frame)
+                    let close = if let Message::Close(frame) = &message {
+                        Some(Ok(frame.clone()))
+                    } else {
+                        None
+                    };
+                    self.socket.sink.send(message.clone()).await?;
+                    if let Some(frame) = close {
+                        return frame
                     }
                 }
                 Some(call) = self.call_receiver.recv() => {

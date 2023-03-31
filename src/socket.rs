@@ -1,8 +1,9 @@
 use crate::Error;
 use futures::stream::BoxStream;
 use futures::{SinkExt, StreamExt, TryStreamExt};
+use std::any::Any;
+use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -147,26 +148,63 @@ pub enum Message {
     Close(Option<CloseFrame>),
 }
 
+#[derive(Debug)]
+struct SinkImpl<M, S> {
+    sink: S,
+    p: PhantomData<M>,
+}
+impl<M, S> futures::Sink<Message> for SinkImpl<M, S>
+where
+    M: From<Message> + Unpin,
+    S: futures::Sink<M, Error = Error> + Unpin,
+{
+    type Error = Error;
+
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.sink.poll_ready_unpin(cx)
+    }
+
+    fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+        self.sink.start_send_unpin(item.into())
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.sink.poll_ready_unpin(cx)
+    }
+
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.sink.poll_close_unpin(cx)
+    }
+}
+
 pub struct Sink {
-    sender: Box<dyn FnMut(Message) -> Result<(), Error> + Send + Sync>,
+    sender: Pin<Box<dyn futures::Sink<Message, Error = Error> + Send + Sync>>,
 }
 
 impl Sink {
-    pub fn send(&mut self, message: Message) -> Result<(), Error> {
-        (self.sender)(message)
+    fn new<M, S>(sink: S) -> Self
+    where
+        M: From<Message> + std::fmt::Debug + Send + Sync + Unpin + 'static,
+        S: futures::Sink<M, Error = Error> + Unpin + Send + Sync + 'static,
+    {
+        Self {
+            sender: Box::pin(SinkImpl {
+                sink,
+                p: Default::default(),
+            }),
+        }
+    }
+    pub async fn send(&mut self, message: Message) -> Result<(), Error> {
+        self.sender.send(message).await
     }
 }
 
 #[derive(Debug)]
-struct StreamImpl<M, S>
-where
-    M: Into<Message>,
-    S: StreamExt<Item = Result<M, Error>> + Unpin,
-{
+struct StreamImpl<S> {
     stream: S,
-    last_alive: Arc<std::sync::Mutex<Instant>>,
+    last_alive: Instant,
 }
-impl<M, S> futures::Stream for StreamImpl<M, S>
+impl<M, S> futures::Stream for StreamImpl<S>
 where
     M: Into<Message>,
     S: StreamExt<Item = Result<M, Error>> + Unpin,
@@ -179,7 +217,7 @@ where
             None => return Poll::Ready(None),
         };
         if let Message::Pong(bytes) = &message {
-            *self.last_alive.lock().unwrap() = Instant::now();
+            self.last_alive = Instant::now();
             if let Ok(bytes) = bytes.clone().try_into() {
                 let bytes: [u8; 16] = bytes;
                 let timestamp = u128::from_be_bytes(bytes);
@@ -200,12 +238,15 @@ pub struct Stream {
 }
 
 impl Stream {
-    fn new<M, S>(stream: S, last_alive: Arc<std::sync::Mutex<Instant>>) -> Self
+    fn new<M, S>(stream: S) -> Self
     where
         M: Into<Message> + std::fmt::Debug + Send + 'static,
         S: StreamExt<Item = Result<M, Error>> + Unpin + Send + 'static,
     {
-        let stream_impl = StreamImpl { stream, last_alive };
+        let stream_impl = StreamImpl {
+            stream,
+            last_alive: Instant::now(),
+        };
 
         Self {
             stream_impl: stream_impl.boxed(),
@@ -221,29 +262,24 @@ pub struct Socket {
     pub sink: Sink,
     pub stream: Stream,
     pub config: Config,
+    pub(crate) disconnected: Option<tokio::sync::mpsc::UnboundedSender<Box<dyn Any + Send>>>,
 }
 
 impl Socket {
     pub fn new<M, E: std::error::Error, S>(socket: S, config: Config) -> Self
     where
-        M: Into<Message> + From<Message> + std::fmt::Debug + Send + Sync + 'static,
+        M: Into<Message> + From<Message> + std::fmt::Debug + Send + Sync + Unpin + 'static,
         E: Into<Error>,
         S: SinkExt<M, Error = E> + Unpin + StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
     {
-        let last_alive = Instant::now();
-        let last_alive = Arc::new(std::sync::Mutex::new(last_alive));
-        let (mut sink, stream) = socket.sink_err_into().err_into().split();
-        let (sink, stream) = (
-            Sink {
-                sender: Box::new(move |x| sink.start_send_unpin(x.into())),
-            },
-            Stream::new(stream, last_alive.clone()),
-        );
+        let (sink, stream) = socket.sink_err_into().err_into().split();
+        let (sink, stream) = (Sink::new(sink), Stream::new(stream));
 
         Self {
             sink,
             stream,
             config,
+            disconnected: None,
         }
     }
 }

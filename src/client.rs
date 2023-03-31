@@ -298,7 +298,7 @@ impl<E: ClientExt> ClientActor<E> {
                             false
                         };
 
-                    let _ = self.socket.sink.send(message);
+                    self.socket.sink.send(message).await?;
                     if close {
                         return Ok(())
                     }
