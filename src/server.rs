@@ -93,10 +93,11 @@ use crate::Session;
 use crate::SessionExt;
 use crate::Socket;
 use async_trait::async_trait;
-use futures::Future;
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+use tracing::error;
 
 struct NewConnection<E: ServerExt> {
     socket: Socket,
@@ -123,41 +124,45 @@ where
     E: Send + 'static,
     <E::Session as SessionExt>::ID: Send,
 {
-    async fn run(&mut self) -> Result<(), Error> {
-        tracing::info!("starting server");
+    async fn run(mut self) {
+        tracing::info!("starting websocket server");
         loop {
-            tokio::select! {
-                Some(NewConnection{socket, address, args, respond_to}) = self.connections.recv() => {
-                    let session = self.extension.on_connect(socket, address, args).await?;
-                    let session_id = session.id.clone();
-                    tracing::info!("connection from {address} accepted");
-                    respond_to.send(session_id.clone()).unwrap();
+            if let Err(err) = async {
+                tokio::select! {
+                    Some(NewConnection{socket, address, respond_to, args}) = self.connections.recv() => {
+                        let session = self.extension.on_connect(socket, address, args).await?;
+                        let session_id = session.id.clone();
+                        tracing::info!("connection from {address} accepted");
+                        respond_to.send(session_id.clone()).unwrap();
 
-                    tokio::spawn({
-                        let server = self.server.clone();
-                        async move {
-                            let result = session.closed().await;
-                            server.disconnected(session_id, result).await;
-                        }
-                    });
+                        tokio::spawn({
+                            let server = self.server.clone();
+                            async move {
+                                let result = session.closed().await;
+                                server.disconnected(session_id, result).await;
+                            }
+                        });
+                    }
+                    Some(Disconnected{id, result}) = self.disconnections.recv() => {
+                        self.extension.on_disconnect(id.clone()).await?;
+                        match result {
+                            Ok(Some(CloseFrame { code, reason })) => {
+                                tracing::info!(%id, ?code, %reason, "connection closed")
+                            }
+                            Ok(None) => tracing::info!(%id, "connection closed"),
+                            Err(err) => tracing::warn!(%id, "connection closed due to: {err:?}"),
+                        };
+                    }
+                    Some(call) = self.calls.recv() => {
+                        self.extension.on_call(call).await?
+                    }
                 }
-                Some(Disconnected{id, result}) = self.disconnections.recv() => {
-                    self.extension.on_disconnect(id.clone()).await?;
-                    match result {
-                        Ok(Some(CloseFrame { code, reason })) => {
-                            tracing::info!(%id, ?code, %reason, "connection closed")
-                        }
-                        Ok(None) => tracing::info!(%id, "connection closed"),
-                        Err(err) => tracing::warn!(%id, "connection closed due to: {err}"),
-                    };
-                }
-                Some(call) = self.calls.recv() => {
-                    self.extension.on_call(call).await?
-                }
-                else => break
+                Ok::<_, Error>(())
+            }
+                .await {
+                error!("Error when processing {:?}", err);
             }
         }
-        Ok(())
     }
 }
 
@@ -203,7 +208,7 @@ impl<E: ServerExt> From<Server<E>> for mpsc::UnboundedSender<E::Call> {
 impl<E: ServerExt + 'static> Server<E> {
     pub fn create(
         create: impl FnOnce(Self) -> E,
-    ) -> (Self, impl Future<Output = Result<(), Error>>) {
+    ) -> (Self, JoinHandle<()>) {
         let (connection_sender, connection_receiver) = mpsc::unbounded_channel();
         let (disconnection_sender, disconnection_receiver) = mpsc::unbounded_channel();
         let (call_sender, call_receiver) = mpsc::unbounded_channel();
@@ -213,18 +218,15 @@ impl<E: ServerExt + 'static> Server<E> {
             disconnections: disconnection_sender,
         };
         let extension = create(handle.clone());
-        let mut actor = ServerActor {
+        let actor = ServerActor {
             connections: connection_receiver,
             disconnections: disconnection_receiver,
             calls: call_receiver,
             extension,
             server: handle.clone(),
         };
-        let future = tokio::spawn(async move {
-            actor.run().await?;
-            Ok::<_, Error>(())
-        });
-        let future = async move { future.await.unwrap() };
+        let future = tokio::spawn(actor.run());
+
         (handle, future)
     }
 }
@@ -244,7 +246,7 @@ impl<E: ServerExt> Server<E> {
                 args,
                 respond_to: sender,
             })
-            .map_err(|_| ())
+            .map_err(|_| "connections is down")
             .unwrap();
         receiver.await.unwrap()
     }
