@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use ezsockets::Error;
+use ezsockets::Request;
 use ezsockets::Server;
 use ezsockets::Socket;
 use std::collections::HashMap;
@@ -49,8 +50,8 @@ impl ezsockets::ServerExt for ChatServer {
     async fn on_connect(
         &mut self,
         socket: Socket,
+        _request: Request,
         _address: SocketAddr,
-        _args: <Self::Session as ezsockets::SessionExt>::Args,
     ) -> Result<Session, Error> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session::create(
@@ -151,7 +152,6 @@ pub struct SessionActor {
 #[async_trait]
 impl ezsockets::SessionExt for SessionActor {
     type ID = SessionID;
-    type Args = ();
     type Call = ();
 
     fn id(&self) -> &Self::ID {

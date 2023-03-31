@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use ezsockets::Error;
+use ezsockets::Request;
 use ezsockets::Server;
 use ezsockets::Socket;
 use std::net::SocketAddr;
@@ -17,8 +18,8 @@ impl ezsockets::ServerExt for EchoServer {
     async fn on_connect(
         &mut self,
         socket: Socket,
+        _request: Request,
         address: SocketAddr,
-        _args: (),
     ) -> Result<Session, Error> {
         let id = address.port();
         let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
@@ -46,7 +47,6 @@ struct EchoSession {
 #[async_trait]
 impl ezsockets::SessionExt for EchoSession {
     type ID = SessionID;
-    type Args = ();
     type Call = ();
 
     fn id(&self) -> &Self::ID {
@@ -72,7 +72,7 @@ impl ezsockets::SessionExt for EchoSession {
 async fn main() {
     tracing_subscriber::fmt::init();
     let (server, _) = Server::create(|_server| EchoServer {});
-    ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_| async move { Ok(()) })
+    ezsockets::tungstenite::run(server, "127.0.0.1:8080")
         .await
         .unwrap();
 }

@@ -16,8 +16,8 @@ impl ezsockets::ServerExt for EchoServer {
     async fn on_connect(
         &mut self,
         socket: ezsockets::Socket,
+        _request: ezsockets::Request,
         address: SocketAddr,
-        _args: (),
     ) -> Result<Session, ezsockets::Error> {
         let id = address.port();
         let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
@@ -45,7 +45,6 @@ struct EchoSession {
 #[async_trait]
 impl ezsockets::SessionExt for EchoSession {
     type ID = SessionID;
-    type Args = ();
     type Call = ();
 
     fn id(&self) -> &Self::ID {
@@ -70,12 +69,7 @@ impl ezsockets::SessionExt for EchoSession {
 pub async fn run(listener: std::net::TcpListener) {
     let listener = TcpListener::from_std(listener).unwrap();
     let (server, _) = ezsockets::Server::create(|_| EchoServer {});
-    ezsockets::tungstenite::run_on(
-        server,
-        listener,
-        ezsockets::tungstenite::Acceptor::Plain,
-        |_socket| async move { Ok(()) },
-    )
-    .await
-    .unwrap();
+    ezsockets::tungstenite::run_on(server, listener, ezsockets::tungstenite::Acceptor::Plain)
+        .await
+        .unwrap();
 }

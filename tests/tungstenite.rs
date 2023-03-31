@@ -6,14 +6,12 @@ use chat::ChatServer;
 
 use ezsockets::Server;
 use ezsockets::ServerExt;
-use ezsockets::SessionExt;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
 async fn run<E>(create_fn: impl FnOnce(Server<E>) -> E) -> (Server<E>, SocketAddr)
 where
     E: ServerExt + 'static,
-    <E::Session as SessionExt>::Args: Default,
 {
     let (server, _) = Server::create(create_fn);
     let address = SocketAddr::from(([127, 0, 0, 1], 0));
@@ -28,7 +26,6 @@ where
                 server,
                 listener,
                 ezsockets::tungstenite::Acceptor::Plain,
-                |_| async move { Ok(Default::default()) },
             )
             .await
             .unwrap();
