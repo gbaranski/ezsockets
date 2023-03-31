@@ -14,11 +14,7 @@ impl ezsockets::ServerExt for EchoServer {
     type Session = EchoSession;
     type Call = ();
 
-    async fn on_connect(
-        &mut self,
-        socket: Socket,
-        address: SocketAddr,
-    ) -> Result<Session, Error> {
+    async fn on_connect(&mut self, socket: Socket, address: SocketAddr) -> Result<Session, Error> {
         let id = address.port();
         let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
         Ok(session)

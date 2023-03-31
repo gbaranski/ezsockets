@@ -29,11 +29,7 @@ impl ezsockets::ServerExt for ChatServer {
     type Session = ChatSession;
     type Call = ChatMessage;
 
-    async fn on_connect(
-        &mut self,
-        socket: Socket,
-        _address: SocketAddr,
-    ) -> Result<Session, Error> {
+    async fn on_connect(&mut self, socket: Socket, _address: SocketAddr) -> Result<Session, Error> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session::create(
             |_| ChatSession {

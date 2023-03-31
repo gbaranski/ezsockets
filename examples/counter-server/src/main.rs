@@ -17,11 +17,7 @@ impl ezsockets::ServerExt for CounterServer {
     type Session = CounterSession;
     type Call = ();
 
-    async fn on_connect(
-        &mut self,
-        socket: Socket,
-        address: SocketAddr,
-    ) -> Result<Session, Error> {
+    async fn on_connect(&mut self, socket: Socket, address: SocketAddr) -> Result<Session, Error> {
         let id = address.port();
         let session = Session::create(
             |handle| {

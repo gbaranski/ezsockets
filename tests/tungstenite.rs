@@ -25,7 +25,7 @@ where
             ezsockets::tungstenite::run_on(
                 server,
                 listener,
-                ezsockets::tungstenite::Acceptor::Plain
+                ezsockets::tungstenite::Acceptor::Plain,
             )
             .await
             .unwrap();
