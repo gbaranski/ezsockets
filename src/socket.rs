@@ -305,7 +305,6 @@ impl Stream {
 pub struct Socket {
     pub sink: Sink,
     pub stream: Stream,
-    pub request: http::Request<()>,
 }
 
 impl Socket {
@@ -353,7 +352,7 @@ impl Socket {
             result
         });
 
-        Self { sink, stream, request: Default::default() }
+        Self { sink, stream }
     }
 
     pub async fn send(&self, message: Message) {

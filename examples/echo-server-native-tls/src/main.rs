@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use ezsockets::Error;
 use ezsockets::Server;
-use ezsockets::Socket;
 use native_tls::Identity;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
@@ -16,7 +15,12 @@ impl ezsockets::ServerExt for EchoServer {
     type Session = EchoSession;
     type Call = ();
 
-    async fn on_connect(&mut self, socket: Socket, address: SocketAddr) -> Result<Session, Error> {
+    async fn on_connect(
+        &mut self,
+        socket: ezsockets::Socket,
+        _request: ezsockets::Request,
+        address: SocketAddr,
+    ) -> Result<Session, Error> {
         let id = address.port();
         let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
         Ok(session)

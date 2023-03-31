@@ -46,3 +46,4 @@ cfg_if::cfg_if! {
 }
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
+pub type Request = http::Request<()>;

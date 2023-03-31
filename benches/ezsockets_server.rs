@@ -16,6 +16,7 @@ impl ezsockets::ServerExt for EchoServer {
     async fn on_connect(
         &mut self,
         socket: ezsockets::Socket,
+        _request: ezsockets::Request,
         address: SocketAddr,
     ) -> Result<Session, ezsockets::Error> {
         let id = address.port();

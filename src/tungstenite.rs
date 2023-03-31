@@ -19,7 +19,7 @@
 //!    // ...
 //!    # type Session = MySession;
 //!    # type Call = ();
-//!    # async fn on_connect(&mut self, socket: ezsockets::Socket, address: std::net::SocketAddr) -> Result<ezsockets::Session<u16, ()>, ezsockets::Error> { unimplemented!() }
+//!    # async fn on_connect(&mut self, socket: ezsockets::Socket, request: ezsockets::Request, address: std::net::SocketAddr) -> Result<ezsockets::Session<u16, ()>, ezsockets::Error> { unimplemented!() }
 //!    # async fn on_disconnect(&mut self, id: <Self::Session as ezsockets::SessionExt>::ID) -> Result<(), ezsockets::Error> { unimplemented!() }
 //!    # async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
 //! }
@@ -32,12 +32,13 @@
 //! ```
 
 use crate::socket::RawMessage;
+use crate::tungstenite::tungstenite::handshake::server::ErrorResponse;
 use crate::CloseCode;
 use crate::CloseFrame;
 use crate::Message;
+use crate::Request;
 use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
-use crate::tungstenite::tungstenite::handshake::server::{NoCallback, Callback, ErrorResponse};
 
 impl<'t> From<tungstenite::protocol::CloseFrame<'t>> for CloseFrame {
     fn from(frame: tungstenite::protocol::CloseFrame) -> Self {
@@ -154,21 +155,21 @@ cfg_if::cfg_if! {
         }
 
         impl Acceptor {
-            async fn accept(&self, stream: TcpStream) -> Result<Socket, Error> {
+            async fn accept(&self, stream: TcpStream) -> Result<(Socket, Request), Error> {
                  let mut req0 = None;
                  let callback = |req: &http::Request<()>, resp: http::Response<()>| -> Result<http::Response<()>, ErrorResponse> {
-                    let mut req1 = http::Request::builder()
-                    .method(req.method().clone())
-                    .uri(req.uri().clone())
-                    .version(req.version());
+                    let mut req1 = Request::builder()
+                        .method(req.method().clone())
+                        .uri(req.uri().clone())
+                        .version(req.version());
                     for (k, v) in req.headers() {
                         req1 = req1.header(k, v);
                     }
-
                     req0 = Some(req1.body(()).unwrap());
-                    NoCallback.on_request(req, resp)
+
+                    Ok(resp)
                 };
-                let mut socket = match self {
+                let socket = match self {
                     Acceptor::Plain => {
                         let socket = tokio_tungstenite::accept_hdr_async(stream, callback).await?;
                         Socket::new(socket, socket::Config::default())
@@ -186,8 +187,7 @@ cfg_if::cfg_if! {
                         Socket::new(socket, socket::Config::default())
                     }
                 };
-                socket.request = req0.unwrap();
-                Ok(socket)
+                Ok((socket, req0.unwrap()))
             }
         }
 
@@ -208,14 +208,14 @@ cfg_if::cfg_if! {
                         continue;
                     },
                 };
-                let socket = match acceptor.accept(stream).await {
+                let (socket, request) = match acceptor.accept(stream).await {
                     Ok(socket) => socket,
                     Err(err) => {
                         tracing::error!(%address, "failed to accept websocket connection: {:?}", err);
                         continue;
                     }
                 };
-                server.accept(socket, address).await;
+                server.accept(socket, request, address).await;
             }
         }
 

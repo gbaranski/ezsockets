@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use ezsockets::Error;
 use ezsockets::Server;
-use ezsockets::Socket;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -17,7 +16,12 @@ impl ezsockets::ServerExt for CounterServer {
     type Session = CounterSession;
     type Call = ();
 
-    async fn on_connect(&mut self, socket: Socket, address: SocketAddr) -> Result<Session, Error> {
+    async fn on_connect(
+        &mut self,
+        socket: ezsockets::Socket,
+        _request: ezsockets::Request,
+        address: SocketAddr,
+    ) -> Result<Session, Error> {
         let id = address.port();
         let session = Session::create(
             |handle| {

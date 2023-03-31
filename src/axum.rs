@@ -27,7 +27,7 @@
 //!     // ...
 //!    # type Session = MySession;
 //!    # type Call = ();
-//!    # async fn on_connect(&mut self, socket: ezsockets::Socket, address: std::net::SocketAddr) -> Result<ezsockets::Session<u16, ()>, ezsockets::Error> { unimplemented!() }
+//!    # async fn on_connect(&mut self, socket: ezsockets::Socket, request: ezsockets::Request, address: std::net::SocketAddr) -> Result<ezsockets::Session<u16, ()>, ezsockets::Error> { unimplemented!() }
 //!    # async fn on_disconnect(&mut self, id: <Self::Session as ezsockets::SessionExt>::ID) -> Result<(), ezsockets::Error> { unimplemented!() }
 //!    # async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
 //! }
@@ -60,7 +60,6 @@
 //! ```
 
 use axum_crate as axum;
-use http::Request;
 
 use crate::CloseCode;
 use crate::CloseFrame;
@@ -87,6 +86,7 @@ use std::net::SocketAddr;
 pub struct Upgrade {
     ws: ws::WebSocketUpgrade,
     address: SocketAddr,
+    request: crate::Request,
 }
 
 #[async_trait]
@@ -97,15 +97,26 @@ where
 {
     type Rejection = WebSocketUpgradeRejection;
 
-    async fn from_request(req: Request<B>, state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request(req: http::Request<B>, state: &S) -> Result<Self, Self::Rejection> {
         let ConnectInfo(address) = req
             .extensions()
             .get::<ConnectInfo<SocketAddr>>()
             .expect("Axum Server must be created with `axum::Router::into_make_service_with_connect_info::<SocketAddr, _>()`")
             .to_owned();
+
+        let mut pure_req = crate::Request::builder()
+            .method(req.method())
+            .uri(req.uri())
+            .version(req.version());
+        for (k, v) in req.headers() {
+            pure_req = pure_req.header(k, v);
+        }
+        let pure_req = pure_req.body(()).unwrap();
+
         Ok(Self {
             ws: ws::WebSocketUpgrade::from_request(req, state).await?,
             address,
+            request: pure_req,
         })
     }
 }
@@ -152,7 +163,7 @@ impl Upgrade {
     pub fn on_upgrade<E: ServerExt + 'static>(self, server: Server<E>) -> Response {
         self.ws.on_upgrade(move |socket| async move {
             let socket = Socket::new(socket, Default::default()); // TODO: Make it really configurable via Extensions
-            server.accept(socket, self.address).await;
+            server.accept(socket, self.request, self.address).await;
         })
     }
 }
