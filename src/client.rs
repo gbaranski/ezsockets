@@ -291,7 +291,7 @@ impl<E: ClientExt> ClientActor<E> {
         loop {
             tokio::select! {
                 Some(message) = self.socket_receiver.recv() => {
-                    self.socket.send(message.clone()).await;
+                    self.socket.send(message.clone());
                     if let Message::Close(_frame) = message {
                         return Ok(())
                     }
@@ -309,6 +309,7 @@ impl<E: ClientExt> ClientActor<E> {
                                     self.client.on_close().await?;
                                     self.reconnect().await;
                                 }
+                                _ => {}
                             };
                         }
                         Some(Err(error)) => {

@@ -134,7 +134,8 @@ where
                         let _ = respond_to.send(session_id.clone());
                         let tx = self.disconnections_tx.clone();
                         tokio::spawn(async move {
-                            let result = session.closed().await;
+                            let jh = session.jh.lock().unwrap().take().unwrap();
+                            let result = jh.await.unwrap();
                             tx.send(Disconnected { id: session_id, result }).map_err(|_| ()).unwrap();
                         });
                     }
@@ -150,7 +151,7 @@ where
                     }
                     Some(call) = self.calls.recv() => {
                         if let Err(err) = self.extension.on_call(call).await {
-                            error!("Error when calling {:?}", err);
+                            tracing::error!("Error when calling {:?}", err);
                         }
                     }
                 }

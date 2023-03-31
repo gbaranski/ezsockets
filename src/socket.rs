@@ -1,13 +1,15 @@
 use crate::Error;
+use futures::stream::BoxStream;
 use futures::{SinkExt, StreamExt, TryStreamExt};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{ready, Context, Poll};
 use std::time::Instant;
 use std::{
     marker::PhantomData,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::mpsc;
-use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone)]
@@ -145,42 +147,25 @@ pub struct CloseFrame {
 pub enum Message {
     Text(String),
     Binary(Vec<u8>),
-    Close(Option<CloseFrame>),
-}
-
-#[derive(Debug, Clone)]
-pub enum RawMessage {
-    Text(String),
-    Binary(Vec<u8>),
     Ping(Vec<u8>),
     Pong(Vec<u8>),
     Close(Option<CloseFrame>),
 }
 
-impl From<Message> for RawMessage {
-    fn from(message: Message) -> Self {
-        match message {
-            Message::Text(text) => Self::Text(text),
-            Message::Binary(bytes) => Self::Binary(bytes),
-            Message::Close(frame) => Self::Close(frame.map(CloseFrame::from)),
-        }
-    }
-}
-
 #[derive(Debug)]
 struct SinkActor<M, S>
 where
-    M: From<RawMessage>,
+    M: From<Message>,
     S: SinkExt<M, Error = Error> + Unpin,
 {
-    receiver: mpsc::UnboundedReceiver<RawMessage>,
+    receiver: mpsc::UnboundedReceiver<Message>,
     sink: S,
     phantom: PhantomData<M>,
 }
 
 impl<M, S> SinkActor<M, S>
 where
-    M: From<RawMessage>,
+    M: From<Message>,
     S: SinkExt<M, Error = Error> + Unpin,
 {
     async fn run(&mut self) -> Result<(), Error> {
@@ -194,13 +179,13 @@ where
 
 #[derive(Debug, Clone)]
 pub struct Sink {
-    sender: mpsc::UnboundedSender<RawMessage>,
+    sender: mpsc::UnboundedSender<Message>,
 }
 
 impl Sink {
-    fn new<M, S>(sink: S) -> (tokio::task::JoinHandle<Result<(), Error>>, Self)
+    fn new<M, S>(sink: S) -> (JoinHandle<Result<(), Error>>, Self)
     where
-        M: From<RawMessage> + Send + 'static,
+        M: From<Message> + Send + 'static,
         S: SinkExt<M, Error = Error> + Unpin + Send + 'static,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
@@ -217,96 +202,75 @@ impl Sink {
         self.sender.is_closed()
     }
 
-    pub async fn send(&self, message: Message) {
+    pub fn send(&self, message: Message) {
         self.sender.send(message.into()).unwrap();
     }
 
-    pub(crate) async fn send_raw(&self, message: RawMessage) {
+    pub(crate) async fn send_raw(&self, message: Message) {
         self.sender.send(message).unwrap();
     }
 }
 
 #[derive(Debug)]
-struct StreamActor<M, S>
+struct StreamImpl<M, S>
 where
-    M: Into<RawMessage>,
+    M: Into<Message>,
     S: StreamExt<Item = Result<M, Error>> + Unpin,
 {
-    sender: mpsc::UnboundedSender<Result<Message, Error>>,
     stream: S,
-    last_alive: Arc<Mutex<Instant>>,
+    last_alive: Arc<std::sync::Mutex<Instant>>,
 }
-
-impl<M, S> StreamActor<M, S>
+impl<M, S> futures::Stream for StreamImpl<M, S>
 where
-    M: Into<RawMessage>,
+    M: Into<Message>,
     S: StreamExt<Item = Result<M, Error>> + Unpin,
 {
-    async fn run(mut self) {
-        while let Some(result) = self.stream.next().await {
-            let result = result.map(M::into);
-            tracing::trace!("received message: {:?}", result);
+    type Item = Result<Message, Error>;
 
-            let message = match result {
-                Ok(message) => Ok(match message {
-                    RawMessage::Text(text) => Message::Text(text),
-                    RawMessage::Binary(bytes) => Message::Binary(bytes),
-                    RawMessage::Ping(_bytes) => continue,
-                    RawMessage::Pong(bytes) => {
-                        *self.last_alive.lock().await = Instant::now();
-                        if let Ok(bytes) = bytes.try_into() {
-                            let bytes: [u8; 16] = bytes;
-                            let timestamp = u128::from_be_bytes(bytes);
-                            let timestamp = Duration::from_millis(timestamp as u64); // TODO: handle overflow
-                            let latency = SystemTime::now()
-                                .duration_since(UNIX_EPOCH + timestamp)
-                                .unwrap();
-                            // TODO: handle time zone
-                            tracing::trace!("latency: {}ms", latency.as_millis());
-                        }
-
-                        continue;
-                    }
-                    RawMessage::Close(_) => return,
-                }),
-                Err(err) => Err(err), // maybe early return here?
-            };
-            if self.sender.send(message).is_err() {
-                tracing::error!("failed to send message. stream is closed");
-                break;
-            };
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let message = match ready!(self.stream.poll_next_unpin(cx)) {
+            Some(x) => x?.into(),
+            None => return Poll::Ready(None),
+        };
+        if let Message::Pong(bytes) = &message {
+            *self.last_alive.lock().unwrap() = Instant::now();
+            if let Ok(bytes) = bytes.clone().try_into() {
+                let bytes: [u8; 16] = bytes;
+                let timestamp = u128::from_be_bytes(bytes);
+                let timestamp = Duration::from_millis(timestamp as u64); // TODO: handle overflow
+                let latency = SystemTime::now()
+                    .duration_since(UNIX_EPOCH + timestamp)
+                    .unwrap();
+                // TODO: handle time zone
+                tracing::trace!("latency: {}ms", latency.as_millis());
+            }
         }
+        Poll::Ready(Some(Ok(message)))
     }
 }
 
-#[derive(Debug)]
 pub struct Stream {
-    receiver: mpsc::UnboundedReceiver<Result<Message, Error>>,
+    stream_impl: BoxStream<'static, Result<Message, Error>>,
 }
 
 impl Stream {
-    fn new<M, S>(stream: S, last_alive: Arc<Mutex<Instant>>) -> (JoinHandle<()>, Self)
+    fn new<M, S>(stream: S, last_alive: Arc<std::sync::Mutex<Instant>>) -> Self
     where
-        M: Into<RawMessage> + std::fmt::Debug + Send + 'static,
+        M: Into<Message> + std::fmt::Debug + Send + 'static,
         S: StreamExt<Item = Result<M, Error>> + Unpin + Send + 'static,
     {
-        let (sender, receiver) = mpsc::unbounded_channel();
-        let actor = StreamActor {
-            sender,
-            stream,
-            last_alive,
-        };
-        let future = tokio::spawn(actor.run());
+        let stream_impl = StreamImpl { stream, last_alive };
 
-        (future, Self { receiver })
+        Self {
+            stream_impl: stream_impl.boxed(),
+        }
     }
 
     pub async fn recv(&mut self) -> Option<Result<Message, Error>> {
-        self.receiver.recv().await
+        self.stream_impl.next().await
     }
 }
 
-#[derive(Debug)]
 pub struct Socket {
     pub sink: Sink,
     pub stream: Stream,
@@ -315,14 +279,14 @@ pub struct Socket {
 impl Socket {
     pub fn new<M, E: std::error::Error, S>(socket: S, config: Config) -> Self
     where
-        M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,
+        M: Into<Message> + From<Message> + std::fmt::Debug + Send + 'static,
         E: Into<Error>,
         S: SinkExt<M, Error = E> + Unpin + StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
     {
         let last_alive = Instant::now();
-        let last_alive = Arc::new(Mutex::new(last_alive));
+        let last_alive = Arc::new(std::sync::Mutex::new(last_alive));
         let (sink, stream) = socket.sink_err_into().err_into().split();
-        let ((sink_future, sink), (stream_future, stream)) =
+        let ((sink_future, sink), stream) =
             (Sink::new(sink), Stream::new(stream, last_alive.clone()));
         let heartbeat_future = tokio::spawn({
             let sink = sink.clone();
@@ -331,27 +295,24 @@ impl Socket {
 
                 loop {
                     interval.tick().await;
-                    if last_alive.lock().await.elapsed() > config.timeout {
+                    if last_alive.lock().unwrap().elapsed() > config.timeout {
                         tracing::info!("closing connection due to timeout");
-                        sink.send_raw(RawMessage::Close(Some(CloseFrame {
+                        sink.send_raw(Message::Close(Some(CloseFrame {
                             code: CloseCode::Normal,
                             reason: String::from("client didn't respond to Ping frame"),
                         })))
                         .await;
                         return;
                     }
-                    let timestamp = SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap();
+                    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
                     let timestamp = timestamp.as_millis();
                     let bytes = timestamp.to_be_bytes();
-                    sink.send_raw(RawMessage::Ping(bytes.to_vec())).await;
+                    sink.send_raw(Message::Ping(bytes.to_vec())).await;
                 }
             }
         });
 
         tokio::spawn(async move {
-            stream_future.await.unwrap();
             sink_future.abort();
             heartbeat_future.abort();
         });
@@ -359,11 +320,11 @@ impl Socket {
         Self { sink, stream }
     }
 
-    pub async fn send(&self, message: Message) {
-        self.sink.send(message).await;
+    pub fn send(&self, message: Message) {
+        self.sink.send(message);
     }
 
-    pub async fn send_raw(&self, message: RawMessage) {
+    pub async fn send_raw(&self, message: Message) {
         self.sink.send_raw(message).await;
     }
 
