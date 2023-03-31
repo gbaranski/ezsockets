@@ -127,7 +127,7 @@ where
         loop {
             tokio::select! {
                 Some(NewConnection{socket, address, respond_to, request}) = self.connections.recv() => {
-                    let session = self.extension.on_connect(socket,  request, address).await?;
+                    let session = self.extension.on_connect(socket, request, address).await?;
                     let session_id = session.id.clone();
                     tracing::info!("connection from {address} accepted");
                     respond_to.send(session_id.clone()).unwrap();
