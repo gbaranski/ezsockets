@@ -1,7 +1,7 @@
 use tokio_tungstenite::tungstenite::{accept, Message};
 
 pub fn run(listener: std::net::TcpListener) {
-    for (stream, _address) in listener.accept() {
+    while let Ok((stream, _address)) = listener.accept() {
         let mut websocket = accept(stream).unwrap();
         loop {
             let message = websocket.read_message().unwrap();
