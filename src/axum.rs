@@ -55,7 +55,7 @@
 //!     Extension(server): Extension<ezsockets::Server<EchoServer>>,
 //!     ezsocket: Upgrade,
 //! ) -> impl IntoResponse {
-//!     ezsocket.on_upgrade(server)c
+//!     ezsocket.on_upgrade(server)
 //! }
 //! ```
 
