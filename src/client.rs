@@ -160,7 +160,7 @@ impl ClientConfig {
 #[async_trait]
 pub trait ClientExt: Send {
     /// Type the custom call - parameters passed to `on_call`.
-    type Call: fmt::Debug + Send;
+    type Call: Send;
 
     /// Handler for text messages from the server.
     async fn on_text(&mut self, text: String) -> Result<(), Error>;
@@ -218,7 +218,7 @@ impl<E: ClientExt> Client<E> {
     /// Call a custom method on the Client.
     /// Refer to `ClientExt::on_call`.
     pub fn call(&self, message: E::Call) {
-        self.calls.send(message).unwrap();
+        self.calls.send(message).map_err(|_| ()).unwrap();
     }
 
     /// Call a custom method on the Client, with a reply from the `ClientExt::on_call`.
@@ -230,7 +230,7 @@ impl<E: ClientExt> Client<E> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        self.calls.send(call).unwrap();
+        self.calls.send(call).map_err(|_| ()).unwrap();
         receiver.await.unwrap()
     }
 
