@@ -1,14 +1,15 @@
-use std::fmt::Formatter;
-use std::sync::Arc;
-
-use crate::CloseFrame;
 use crate::Error;
 use crate::Message;
 use crate::Socket;
+use crate::{CloseCode, CloseFrame};
 use async_trait::async_trait;
+use std::fmt::Formatter;
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 
 #[async_trait]
 pub trait SessionExt: Send {
@@ -70,7 +71,13 @@ impl<I: std::fmt::Display + Clone + Send, C: Send> Session<I, C> {
             jh: Arc::new(std::sync::Mutex::new(None)),
         };
         let session = session_fn(handle.clone());
-        let actor = SessionActor::new(session, session_id, socket_receiver, call_receiver, socket);
+        let actor = SessionActor {
+            extension: session,
+            id: session_id,
+            socket_receiver,
+            call_receiver,
+            socket,
+        };
         let jh = tokio::spawn(actor.run());
         *handle.jh.lock().unwrap() = Some(jh);
         handle
@@ -127,28 +134,29 @@ pub(crate) struct SessionActor<E: SessionExt> {
 }
 
 impl<E: SessionExt> SessionActor<E> {
-    pub(crate) fn new(
-        extension: E,
-        id: E::ID,
-        socket_receiver: mpsc::UnboundedReceiver<Message>,
-        call_receiver: mpsc::UnboundedReceiver<E::Call>,
-        socket: Socket,
-    ) -> Self {
-        Self {
-            id,
-            extension,
-            socket_receiver,
-            call_receiver,
-            socket,
-        }
-    }
-
     pub(crate) async fn run(mut self) -> Result<Option<CloseFrame>, Error> {
+        let mut interval = tokio::time::interval(self.socket.config.heartbeat);
+        let last_alive = Instant::now();
         loop {
             tokio::select! {
                 biased;
+                _tick = interval.tick() => {
+                    if last_alive.elapsed() > self.socket.config.timeout {
+                        tracing::info!("closing connection due to timeout");
+                         self.socket.sink.send(Message::Close(Some(CloseFrame {
+                            code: CloseCode::Normal,
+                            reason: String::from("client didn't respond to Ping frame"),
+                        })))?;
+                        break;
+                    }
+                    // Use chrono Utc::now()
+                    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+                    let timestamp = timestamp.as_millis();
+                    let bytes = timestamp.to_be_bytes();
+                    self.socket.sink.send(Message::Ping(bytes.to_vec()))?;
+                }
                 Some(message) = self.socket_receiver.recv() => {
-                    self.socket.send(message.clone());
+                    self.socket.sink.send(message.clone())?;
                     if let Message::Close(frame) = message {
                         return Ok(frame)
                     }
@@ -156,7 +164,7 @@ impl<E: SessionExt> SessionActor<E> {
                 Some(call) = self.call_receiver.recv() => {
                     self.extension.on_call(call).await?;
                 }
-                message = self.socket.recv() => {
+                message = self.socket.stream.recv() => {
                     match message {
                         Some(Ok(message)) => match message {
                             Message::Text(text) => self.extension.on_text(text).await?,

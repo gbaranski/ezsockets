@@ -5,12 +5,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::time::Instant;
-use std::{
-    marker::PhantomData,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -152,62 +147,13 @@ pub enum Message {
     Close(Option<CloseFrame>),
 }
 
-#[derive(Debug)]
-struct SinkActor<M, S>
-where
-    M: From<Message>,
-    S: SinkExt<M, Error = Error> + Unpin,
-{
-    receiver: mpsc::UnboundedReceiver<Message>,
-    sink: S,
-    phantom: PhantomData<M>,
-}
-
-impl<M, S> SinkActor<M, S>
-where
-    M: From<Message>,
-    S: SinkExt<M, Error = Error> + Unpin,
-{
-    async fn run(&mut self) -> Result<(), Error> {
-        while let Some(message) = self.receiver.recv().await {
-            tracing::trace!("sending message: {:?}", message);
-            self.sink.send(M::from(message)).await?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct Sink {
-    sender: mpsc::UnboundedSender<Message>,
+    sender: Box<dyn FnMut(Message) -> Result<(), Error> + Send + Sync>,
 }
 
 impl Sink {
-    fn new<M, S>(sink: S) -> (JoinHandle<Result<(), Error>>, Self)
-    where
-        M: From<Message> + Send + 'static,
-        S: SinkExt<M, Error = Error> + Unpin + Send + 'static,
-    {
-        let (sender, receiver) = mpsc::unbounded_channel();
-        let mut actor = SinkActor {
-            receiver,
-            sink,
-            phantom: Default::default(),
-        };
-        let future = tokio::spawn(async move { actor.run().await });
-        (future, Self { sender })
-    }
-
-    pub fn is_closed(&self) -> bool {
-        self.sender.is_closed()
-    }
-
-    pub fn send(&self, message: Message) {
-        self.sender.send(message.into()).unwrap();
-    }
-
-    pub(crate) async fn send_raw(&self, message: Message) {
-        self.sender.send(message).unwrap();
+    pub fn send(&mut self, message: Message) -> Result<(), Error> {
+        (self.sender)(message)
     }
 }
 
@@ -274,61 +220,30 @@ impl Stream {
 pub struct Socket {
     pub sink: Sink,
     pub stream: Stream,
+    pub config: Config,
 }
 
 impl Socket {
     pub fn new<M, E: std::error::Error, S>(socket: S, config: Config) -> Self
     where
-        M: Into<Message> + From<Message> + std::fmt::Debug + Send + 'static,
+        M: Into<Message> + From<Message> + std::fmt::Debug + Send + Sync + 'static,
         E: Into<Error>,
         S: SinkExt<M, Error = E> + Unpin + StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
     {
         let last_alive = Instant::now();
         let last_alive = Arc::new(std::sync::Mutex::new(last_alive));
-        let (sink, stream) = socket.sink_err_into().err_into().split();
-        let ((sink_future, sink), stream) =
-            (Sink::new(sink), Stream::new(stream, last_alive.clone()));
-        let heartbeat_future = tokio::spawn({
-            let sink = sink.clone();
-            async move {
-                let mut interval = tokio::time::interval(config.heartbeat);
+        let (mut sink, stream) = socket.sink_err_into().err_into().split();
+        let (sink, stream) = (
+            Sink {
+                sender: Box::new(move |x| sink.start_send_unpin(x.into())),
+            },
+            Stream::new(stream, last_alive.clone()),
+        );
 
-                loop {
-                    interval.tick().await;
-                    if last_alive.lock().unwrap().elapsed() > config.timeout {
-                        tracing::info!("closing connection due to timeout");
-                        sink.send_raw(Message::Close(Some(CloseFrame {
-                            code: CloseCode::Normal,
-                            reason: String::from("client didn't respond to Ping frame"),
-                        })))
-                        .await;
-                        return;
-                    }
-                    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-                    let timestamp = timestamp.as_millis();
-                    let bytes = timestamp.to_be_bytes();
-                    sink.send_raw(Message::Ping(bytes.to_vec())).await;
-                }
-            }
-        });
-
-        tokio::spawn(async move {
-            sink_future.abort();
-            heartbeat_future.abort();
-        });
-
-        Self { sink, stream }
-    }
-
-    pub fn send(&self, message: Message) {
-        self.sink.send(message);
-    }
-
-    pub async fn send_raw(&self, message: Message) {
-        self.sink.send_raw(message).await;
-    }
-
-    pub async fn recv(&mut self) -> Option<Result<Message, Error>> {
-        self.stream.recv().await
+        Self {
+            sink,
+            stream,
+            config,
+        }
     }
 }

@@ -5,6 +5,8 @@
 //!
 //! Refer to [`client`] or [`server`] module for detailed implementation guides.
 
+extern crate core;
+
 mod socket;
 
 pub use socket::CloseCode;
