@@ -112,8 +112,8 @@ struct Disconnected<E: ServerExt> {
 struct ServerActor<E: ServerExt> {
     connections: mpsc::UnboundedReceiver<NewConnection<E>>,
     disconnections: mpsc::UnboundedReceiver<Disconnected<E>>,
+    disconnections_tx: mpsc::UnboundedSender<Disconnected<E>>,
     calls: mpsc::UnboundedReceiver<E::Call>,
-    server: Server<E>,
     extension: E,
 }
 
@@ -131,14 +131,11 @@ where
                         let session = self.extension.on_connect(socket, request, address).await?;
                         let session_id = session.id.clone();
                         tracing::info!("connection from {address} accepted");
-                        respond_to.send(session_id.clone()).unwrap();
-
-                        tokio::spawn({
-                            let server = self.server.clone();
-                            async move {
-                                let result = session.closed().await;
-                                server.disconnected(session_id, result).await;
-                            }
+                        let _ = respond_to.send(session_id.clone());
+                        let tx = self.disconnections_tx.clone();
+                        tokio::spawn(async move {
+                            let result = session.closed().await;
+                            tx.send(Disconnected { id: session_id, result }).map_err(|_| ()).unwrap();
                         });
                     }
                     Some(Disconnected{id, result}) = self.disconnections.recv() => {
@@ -152,7 +149,9 @@ where
                         };
                     }
                     Some(call) = self.calls.recv() => {
-                        self.extension.on_call(call).await?
+                        if let Err(err) = self.extension.on_call(call).await {
+                            error!("Error when calling {:?}", err);
+                        }
                     }
                 }
                 Ok::<_, Error>(())
@@ -193,7 +192,6 @@ pub trait ServerExt: Send {
 #[derive(Debug)]
 pub struct Server<E: ServerExt> {
     connections: mpsc::UnboundedSender<NewConnection<E>>,
-    disconnections: mpsc::UnboundedSender<Disconnected<E>>,
     calls: mpsc::UnboundedSender<E::Call>,
 }
 
@@ -211,15 +209,14 @@ impl<E: ServerExt + 'static> Server<E> {
         let handle = Self {
             connections: connection_sender,
             calls: call_sender,
-            disconnections: disconnection_sender,
         };
         let extension = create(handle.clone());
         let actor = ServerActor {
             connections: connection_receiver,
             disconnections: disconnection_receiver,
+            disconnections_tx: disconnection_sender,
             calls: call_receiver,
             extension,
-            server: handle.clone(),
         };
         let future = tokio::spawn(actor.run());
 
@@ -248,17 +245,6 @@ impl<E: ServerExt> Server<E> {
         receiver.await.unwrap()
     }
 
-    pub(crate) async fn disconnected(
-        &self,
-        id: <E::Session as SessionExt>::ID,
-        result: Result<Option<CloseFrame>, Error>,
-    ) {
-        self.disconnections
-            .send(Disconnected { id, result })
-            .map_err(|_| ())
-            .unwrap();
-    }
-
     pub fn call(&self, call: E::Call) {
         self.calls.send(call).map_err(|_| ()).unwrap();
     }
@@ -277,11 +263,10 @@ impl<E: ServerExt> Server<E> {
     }
 }
 
-impl<E: ServerExt> std::clone::Clone for Server<E> {
+impl<E: ServerExt> Clone for Server<E> {
     fn clone(&self) -> Self {
         Self {
             connections: self.connections.clone(),
-            disconnections: self.disconnections.clone(),
             calls: self.calls.clone(),
         }
     }
