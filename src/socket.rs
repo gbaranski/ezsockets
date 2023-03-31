@@ -9,7 +9,6 @@ use std::{
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tracing::error;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -273,7 +272,7 @@ where
                 Err(err) => Err(err), // maybe early return here?
             };
             if self.sender.send(message).is_err() {
-                error!("Socket already closed");
+                tracing::error!("failed to send message. stream is closed");
                 break;
             };
         }

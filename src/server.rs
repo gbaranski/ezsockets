@@ -96,7 +96,6 @@ use std::net::SocketAddr;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tracing::error;
 
 struct NewConnection<E: ServerExt> {
     socket: Socket,
@@ -159,7 +158,7 @@ where
                 Ok::<_, Error>(())
             }
                 .await {
-                error!("Error when processing {:?}", err);
+                tracing::error!("error when processing: {err:?}");
             }
         }
     }
