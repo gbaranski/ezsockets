@@ -13,7 +13,6 @@ use axum::Router;
 use ezsockets::axum::Upgrade;
 use ezsockets::Server;
 use ezsockets::ServerExt;
-use ezsockets::SessionExt;
 use std::net::SocketAddr;
 
 async fn websocket_handler<E>(
@@ -22,15 +21,13 @@ async fn websocket_handler<E>(
 ) -> impl IntoResponse
 where
     E: ServerExt + 'static,
-    <E::Session as SessionExt>::Args: Default,
 {
-    ezsocket.on_upgrade(server, Default::default())
+    ezsocket.on_upgrade(server)
 }
 
 async fn run<E>(create_fn: impl FnOnce(Server<E>) -> E) -> (Server<E>, SocketAddr)
 where
     E: ServerExt + 'static,
-    <E::Session as SessionExt>::Args: Default,
 {
     let (server, _) = Server::create(create_fn);
     let app = Router::new()

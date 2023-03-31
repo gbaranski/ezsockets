@@ -20,7 +20,6 @@
 //! #[async_trait]
 //! impl ezsockets::SessionExt for EchoSession {
 //!     type ID = SessionID;
-//!     type Args = ();
 //!     type Call = ();
 //!
 //!     fn id(&self) -> &Self::ID {
@@ -48,7 +47,6 @@
 //! // Create our own server that implements `ServerExt`
 //!
 //! use ezsockets::Server;
-//! use ezsockets::Socket;
 //! use std::net::SocketAddr;
 //!
 //! struct EchoServer {}
@@ -60,9 +58,9 @@
 //!
 //!     async fn on_connect(
 //!         &mut self,
-//!         socket: Socket,
+//!         socket: ezsockets::Socket,
+//!         request: ezsockets::Request,
 //!         address: SocketAddr,
-//!         _args: (),
 //!     ) -> Result<Session, ezsockets::Error> {
 //!         let id = address.port();
 //!         let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
@@ -89,6 +87,7 @@
 
 use crate::CloseFrame;
 use crate::Error;
+use crate::Request;
 use crate::Session;
 use crate::SessionExt;
 use crate::Socket;
@@ -102,7 +101,7 @@ use tracing::error;
 struct NewConnection<E: ServerExt> {
     socket: Socket,
     address: SocketAddr,
-    args: <E::Session as SessionExt>::Args,
+    request: Request,
     respond_to: oneshot::Sender<<E::Session as SessionExt>::ID>,
 }
 
@@ -129,8 +128,8 @@ where
         loop {
             if let Err(err) = async {
                 tokio::select! {
-                    Some(NewConnection{socket, address, respond_to, args}) = self.connections.recv() => {
-                        let session = self.extension.on_connect(socket, address, args).await?;
+                    Some(NewConnection{socket, address, respond_to, request}) = self.connections.recv() => {
+                        let session = self.extension.on_connect(socket, request, address).await?;
                         let session_id = session.id.clone();
                         tracing::info!("connection from {address} accepted");
                         respond_to.send(session_id.clone()).unwrap();
@@ -179,8 +178,8 @@ pub trait ServerExt: Send {
     async fn on_connect(
         &mut self,
         socket: Socket,
+        request: Request,
         address: SocketAddr,
-        args: <Self::Session as SessionExt>::Args,
     ) -> Result<
         Session<<Self::Session as SessionExt>::ID, <Self::Session as SessionExt>::Call>,
         Error,
@@ -235,15 +234,16 @@ impl<E: ServerExt> Server<E> {
     pub async fn accept(
         &self,
         socket: Socket,
+        request: Request,
         address: SocketAddr,
-        args: <E::Session as SessionExt>::Args,
     ) -> <E::Session as SessionExt>::ID {
+        // TODO: can we refuse the connection here?
         let (sender, receiver) = oneshot::channel();
         self.connections
             .send(NewConnection {
                 socket,
+                request,
                 address,
-                args,
                 respond_to: sender,
             })
             .map_err(|_| "connections is down")

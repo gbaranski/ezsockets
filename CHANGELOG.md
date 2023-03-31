@@ -4,6 +4,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.6.0 BREAKING
+
+- feat: loosen `std::fmt::Debug` constrain on `Call` by @qiujiangkun in https://github.com/gbaranski/ezsockets/pull/39
+- refactor: replace `SessionExt::Args` with `http::Request` by @qiujiangkun and @gbaranski in https://github.com/gbaranski/ezsockets/pull/42
+
+
+Migration guide:
+```rust
+impl ezsockets::SessionExt for MySession {
+    type Args = (); // <----- 1. Remove Args on `SessionExt`
+    // ...
+}
+
+impl ezsockets::ServerExt for ChatServer {
+    // before
+    async fn on_connect(
+        &mut self,
+        socket: Socket,
+        address: SocketAddr,
+        args: <Self::Session as ezsockets::SessionExt>::Args, // <----- 2. Remove `args` argument
+    ) -> Result<Session, Error> { todo!() }
+
+    // after
+    async fn on_connect(
+        &mut self,
+        socket: Socket,
+        request: ezsockets::Request, // <----- 3. Add `request: ezsockets::Request` argument.
+        //                                        Note: `ezsockets::Request` is an alias for `http::Request`
+        address: SocketAddr,
+    ) -> Result<Session, Error> { todo!() }
+    
+    // ...
+}
+
+
+// ONLY for `axum`
+
+async fn websocket_handler(
+    Extension(server): Extension<Server<ChatServer>>,
+    ezsocket: Upgrade,
+) -> impl IntoResponse {
+    let session_args = get_session_args();
+    // before:
+        ezsocket.on_upgrade(server, session_args) // <----- 4. Remove `session_args` argument
+    // after:
+        ezsocket.on_upgrade(server)               // <----- Now you can customize the `Session` inside of `ServerExt::on_connect` via `ezsockets::Request`
+}
+
+// ONLY for `tungstenite`
+
+// before
+ezsockets::tungstenite::run(
+    server, 
+    "127.0.0.1:8080", 
+    |_| async move { Ok(()) } // <----- 5. Remove the last argument, 
+                              // Now you can customize the `Session` inside of `ServerExt::on_connect` via `ezsockets::Request`
+).await.unwrap();
+
+// after
+ezsockets::tungstenite::run(server, "127.0.0.1:8080") // Now you can customize the `Session` inside of `ServerExt::on_connect` via `ezsockets::Request`
+    .await
+    .unwrap();
+```
+
+
 ## v0.5.1
 - fix examples links in README.md
 

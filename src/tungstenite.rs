@@ -6,7 +6,6 @@
 //! # #[async_trait::async_trait]
 //! # impl ezsockets::SessionExt for MySession {
 //! #   type ID = u16;
-//! #   type Args = ();
 //! #   type Call = ();
 //! #   fn id(&self) -> &Self::ID { unimplemented!() }
 //! #   async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> { unimplemented!() }
@@ -20,7 +19,7 @@
 //!    // ...
 //!    # type Session = MySession;
 //!    # type Call = ();
-//!    # async fn on_connect(&mut self, socket: ezsockets::Socket, address: std::net::SocketAddr, _args: ()) -> Result<ezsockets::Session<u16, ()>, ezsockets::Error> { unimplemented!() }
+//!    # async fn on_connect(&mut self, socket: ezsockets::Socket, request: ezsockets::Request, address: std::net::SocketAddr) -> Result<ezsockets::Session<u16, ()>, ezsockets::Error> { unimplemented!() }
 //!    # async fn on_disconnect(&mut self, id: <Self::Session as ezsockets::SessionExt>::ID) -> Result<(), ezsockets::Error> { unimplemented!() }
 //!    # async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
 //! }
@@ -28,14 +27,16 @@
 //! #[tokio::main]
 //! async fn main() {
 //!     let (server, _) = ezsockets::Server::create(|_| MyServer {});
-//!     ezsockets::tungstenite::run(server, "127.0.0.1:8080", |_socket| async move { Ok(()) }).await.unwrap();
+//!     ezsockets::tungstenite::run(server, "127.0.0.1:8080").await.unwrap();
 //! }
 //! ```
 
 use crate::socket::RawMessage;
+use crate::tungstenite::tungstenite::handshake::server::ErrorResponse;
 use crate::CloseCode;
 use crate::CloseFrame;
 use crate::Message;
+use crate::Request;
 use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
 
@@ -122,6 +123,7 @@ impl From<tungstenite::Message> for RawMessage {
         }
     }
 }
+
 impl From<Message> for tungstenite::Message {
     fn from(message: Message) -> Self {
         match message {
@@ -139,12 +141,10 @@ cfg_if::cfg_if! {
         use crate::Socket;
         use crate::socket;
         use crate::ServerExt;
-        use crate::SessionExt;
 
         use tokio::net::TcpListener;
         use tokio::net::ToSocketAddrs;
         use tokio::net::TcpStream;
-        use futures::Future;
 
         pub enum Acceptor {
             Plain,
@@ -155,94 +155,94 @@ cfg_if::cfg_if! {
         }
 
         impl Acceptor {
-            async fn accept(&self, stream: TcpStream) -> Result<Socket, Error> {
+            async fn accept(&self, stream: TcpStream) -> Result<(Socket, Request), Error> {
+                 let mut req0 = None;
+                 let callback = |req: &http::Request<()>, resp: http::Response<()>| -> Result<http::Response<()>, ErrorResponse> {
+                    let mut req1 = Request::builder()
+                        .method(req.method().clone())
+                        .uri(req.uri().clone())
+                        .version(req.version());
+                    for (k, v) in req.headers() {
+                        req1 = req1.header(k, v);
+                    }
+                    req0 = Some(req1.body(()).unwrap());
+
+                    Ok(resp)
+                };
                 let socket = match self {
                     Acceptor::Plain => {
-                        let socket = tokio_tungstenite::accept_async(stream).await?;
+                        let socket = tokio_tungstenite::accept_hdr_async(stream, callback).await?;
                         Socket::new(socket, socket::Config::default())
                     }
                     #[cfg(feature = "native-tls")]
                     Acceptor::NativeTls(acceptor) => {
                         let tls_stream = acceptor.accept(stream).await?;
-                        let socket = tokio_tungstenite::accept_async(tls_stream).await?;
+                        let socket = tokio_tungstenite::accept_hdr_async(tls_stream, callback).await?;
                         Socket::new(socket, socket::Config::default())
                     }
                     #[cfg(feature = "rustls")]
                     Acceptor::Rustls(acceptor) => {
                         let tls_stream = acceptor.accept(stream).await?;
-                        let socket = tokio_tungstenite::accept_async(tls_stream).await?;
+                        let socket = tokio_tungstenite::accept_hdr_async(tls_stream, callback).await?;
                         Socket::new(socket, socket::Config::default())
                     }
                 };
-                Ok(socket)
+                Ok((socket, req0.unwrap()))
             }
         }
 
-        async fn run_acceptor<E, GetArgsFut>(
+        async fn run_acceptor<E>(
             server: Server<E>,
             listener: TcpListener,
             acceptor: Acceptor,
-            get_args: impl Fn(&mut Socket) -> GetArgsFut
         ) -> Result<(), Error>
         where
-            E: ServerExt + 'static,
-            GetArgsFut: Future<Output = Result<<E::Session as SessionExt>::Args, Error>>
+            E: ServerExt + 'static
         {
             loop {
                 // TODO: Find a better way without those stupid matches
                 let (stream, address) = match listener.accept().await {
                     Ok(stream) => stream,
                     Err(err) => {
-                        tracing::error!("failed to accept tcp connection: {err}");
+                        tracing::error!("failed to accept tcp connection: {:?}", err);
                         continue;
                     },
                 };
-                let mut socket = match acceptor.accept(stream).await {
+                let (socket, request) = match acceptor.accept(stream).await {
                     Ok(socket) => socket,
                     Err(err) => {
-                        tracing::error!(%address, "failed to accept websocket connection: {err}");
+                        tracing::error!(%address, "failed to accept websocket connection: {:?}", err);
                         continue;
                     }
                 };
-                let args = match get_args(&mut socket).await {
-                    Ok(socket) => socket,
-                    Err(err) => {
-                        tracing::error!(%address, "failed to get session args: {err}");
-                        continue;
-                    }
-                };
-                server.accept(socket, address, args).await;
+                server.accept(socket, request, address).await;
             }
         }
 
         // Run the server
-        pub async fn run<E, A, GetArgsFut>(
+        pub async fn run<E, A>(
             server: Server<E>,
             address: A,
-            get_args: impl Fn(&mut Socket) -> GetArgsFut
         ) -> Result<(), Error>
         where
             E: ServerExt + 'static,
             A: ToSocketAddrs,
-            GetArgsFut: Future<Output = Result<<E::Session as SessionExt>::Args, Error>>
         {
             let listener = TcpListener::bind(address).await?;
-            run_acceptor(server, listener, Acceptor::Plain, get_args).await
+            run_acceptor(server, listener, Acceptor::Plain).await
         }
 
         /// Run the server on custom `Listener` and `Acceptor`
         /// For default acceptor use `Acceptor::plain`
-        pub async fn run_on<E, GetArgsFut>(
+        pub async fn run_on<E>(
             server: Server<E>,
             listener: TcpListener,
             acceptor: Acceptor,
-            get_args: impl Fn(&mut Socket) -> GetArgsFut
         ) -> Result<(), Error>
         where
-            E: ServerExt + 'static,
-            GetArgsFut: Future<Output = Result<<E::Session as SessionExt>::Args, Error>>
+            E: ServerExt + 'static
         {
-            run_acceptor(server, listener, acceptor, get_args).await
+            run_acceptor(server, listener, acceptor).await
         }
     }
 }

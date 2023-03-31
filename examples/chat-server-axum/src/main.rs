@@ -6,7 +6,6 @@ use axum::Router;
 use ezsockets::axum::Upgrade;
 use ezsockets::Error;
 use ezsockets::Server;
-use ezsockets::Socket;
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::net::SocketAddr;
@@ -31,9 +30,9 @@ impl ezsockets::ServerExt for ChatServer {
 
     async fn on_connect(
         &mut self,
-        socket: Socket,
+        socket: ezsockets::Socket,
+        _request: ezsockets::Request,
         _address: SocketAddr,
-        _args: <Self::Session as ezsockets::SessionExt>::Args,
     ) -> Result<Session, Error> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session::create(
@@ -79,7 +78,6 @@ struct ChatSession {
 #[async_trait]
 impl ezsockets::SessionExt for ChatSession {
     type ID = SessionID;
-    type Args = ();
     type Call = ();
 
     fn id(&self) -> &Self::ID {
@@ -141,5 +139,5 @@ async fn websocket_handler(
     Extension(server): Extension<Server<ChatServer>>,
     ezsocket: Upgrade,
 ) -> impl IntoResponse {
-    ezsocket.on_upgrade(server, ())
+    ezsocket.on_upgrade(server)
 }

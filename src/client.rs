@@ -52,6 +52,7 @@ use crate::socket::Config;
 use crate::CloseFrame;
 use crate::Error;
 use crate::Message;
+use crate::Request;
 use crate::Socket;
 use async_trait::async_trait;
 use base64::Engine;
@@ -136,8 +137,8 @@ impl ClientConfig {
         self
     }
 
-    fn connect_http_request(&self) -> http::Request<()> {
-        let mut http_request = http::Request::builder()
+    fn connect_http_request(&self) -> Request {
+        let mut http_request = Request::builder()
             .uri(self.url.as_str())
             .method("GET")
             .header("Host", self.url.host().unwrap().to_string())

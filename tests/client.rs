@@ -9,6 +9,10 @@ pub async fn connect<E: ClientExt + 'static>(
 ) -> Client<E> {
     let url = format!("ws://{}/websocket", address);
     let url = Url::from_str(&url).unwrap();
-    let (client, _) = ezsockets::connect(client_fn, ClientConfig::new(url)).await;
+    let (client, _) = ezsockets::connect(
+        client_fn,
+        ClientConfig::new(url).header("Some-Header", "someValue"),
+    )
+    .await;
     client
 }

@@ -14,8 +14,6 @@ use tokio::sync::Mutex;
 pub trait SessionExt: Send {
     /// Custom identification number of SessionExt, usually a number or a string.
     type ID: Send + Sync + Clone + std::fmt::Debug + std::fmt::Display;
-    /// Arguments passed for creating a new session on server.
-    type Args: std::fmt::Debug + Send;
     /// Type the custom call - parameters passed to `on_call`.
     type Call: Send;
 
