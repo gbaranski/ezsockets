@@ -29,12 +29,7 @@ impl ezsockets::ServerExt for ChatServer {
     type Session = ChatSession;
     type Call = ChatMessage;
 
-    async fn on_connect(
-        &mut self,
-        socket: Socket,
-        _address: SocketAddr,
-        _args: <Self::Session as ezsockets::SessionExt>::Args,
-    ) -> Result<Session, Error> {
+    async fn on_connect(&mut self, socket: Socket, _address: SocketAddr) -> Result<Session, Error> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session::create(
             |_| ChatSession {
@@ -79,7 +74,6 @@ struct ChatSession {
 #[async_trait]
 impl ezsockets::SessionExt for ChatSession {
     type ID = SessionID;
-    type Args = ();
     type Call = ();
 
     fn id(&self) -> &Self::ID {
@@ -141,5 +135,5 @@ async fn websocket_handler(
     Extension(server): Extension<Server<ChatServer>>,
     ezsocket: Upgrade,
 ) -> impl IntoResponse {
-    ezsocket.on_upgrade(server, ())
+    ezsocket.on_upgrade(server)
 }
