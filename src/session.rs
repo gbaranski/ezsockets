@@ -94,21 +94,21 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     pub fn text(&self, text: String) {
         self.socket
             .send(Message::Text(text))
-            .unwrap_or_else(|_| panic!("Session::text {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
+            .unwrap_or_else(|_| tracing::warn!("Session::text {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Sends a Binary message to the server
     pub fn binary(&self, bytes: Vec<u8>) {
         self.socket
             .send(Message::Binary(bytes))
-            .unwrap_or_else(|_| panic!("Session::binary {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
+            .unwrap_or_else(|_| tracing::warn!("Session::binary {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Calls a method on the session
     pub fn call(&self, call: C) {
         self.calls
             .send(call)
-            .unwrap_or_else(|_| panic!("Session::call {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
+            .unwrap_or_else(|_| tracing::warn!("Session::call {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
@@ -116,12 +116,12 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     pub async fn call_with<R: std::fmt::Debug>(
         &self,
         f: impl FnOnce(oneshot::Sender<R>) -> C,
-    ) -> R {
+    ) -> Option<R> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        self.calls.send(call).map_err(|_| ()).unwrap();
-        receiver.await.unwrap()
+        self.calls.send(call).ok()?;
+        receiver.await.ok()
     }
 }
 
