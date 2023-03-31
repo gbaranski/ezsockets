@@ -61,12 +61,11 @@
 
 use axum_crate as axum;
 
-use crate::CloseCode;
 use crate::CloseFrame;
-use crate::RawMessage;
 use crate::Server;
 use crate::ServerExt;
 use crate::Socket;
+use crate::{CloseCode, Message};
 use async_trait::async_trait;
 use axum::extract::ws;
 use axum::extract::ws::rejection::*;
@@ -121,34 +120,34 @@ where
     }
 }
 
-impl From<ws::Message> for RawMessage {
+impl From<ws::Message> for Message {
     fn from(message: ws::Message) -> Self {
         match message {
-            ws::Message::Text(text) => RawMessage::Text(text),
-            ws::Message::Binary(binary) => RawMessage::Binary(binary),
-            ws::Message::Ping(ping) => RawMessage::Ping(ping),
-            ws::Message::Pong(pong) => RawMessage::Pong(pong),
-            ws::Message::Close(Some(close)) => RawMessage::Close(Some(CloseFrame {
+            ws::Message::Text(text) => Message::Text(text),
+            ws::Message::Binary(binary) => Message::Binary(binary),
+            ws::Message::Ping(ping) => Message::Ping(ping),
+            ws::Message::Pong(pong) => Message::Pong(pong),
+            ws::Message::Close(Some(close)) => Message::Close(Some(CloseFrame {
                 code: CloseCode::try_from(close.code).unwrap(),
                 reason: close.reason.into(),
             })),
-            ws::Message::Close(None) => RawMessage::Close(None),
+            ws::Message::Close(None) => Message::Close(None),
         }
     }
 }
 
-impl From<RawMessage> for ws::Message {
-    fn from(message: RawMessage) -> Self {
+impl From<Message> for ws::Message {
+    fn from(message: Message) -> Self {
         match message {
-            RawMessage::Text(text) => ws::Message::Text(text),
-            RawMessage::Binary(binary) => ws::Message::Binary(binary),
-            RawMessage::Ping(ping) => ws::Message::Ping(ping),
-            RawMessage::Pong(pong) => ws::Message::Pong(pong),
-            RawMessage::Close(Some(close)) => ws::Message::Close(Some(ws::CloseFrame {
+            Message::Text(text) => ws::Message::Text(text),
+            Message::Binary(binary) => ws::Message::Binary(binary),
+            Message::Ping(ping) => ws::Message::Ping(ping),
+            Message::Pong(pong) => ws::Message::Pong(pong),
+            Message::Close(Some(close)) => ws::Message::Close(Some(ws::CloseFrame {
                 code: close.code.into(),
                 reason: close.reason.into(),
             })),
-            RawMessage::Close(None) => ws::Message::Close(None),
+            Message::Close(None) => ws::Message::Close(None),
         }
     }
 }
