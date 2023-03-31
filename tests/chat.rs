@@ -50,9 +50,11 @@ impl ezsockets::ServerExt for ChatServer {
     async fn on_connect(
         &mut self,
         socket: Socket,
-        _request: Request,
+        request: Request,
         _address: SocketAddr,
     ) -> Result<Session, Error> {
+        let value = request.headers().get("Some-Header").unwrap();
+        assert_eq!(value, "someValue");
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session::create(
             |_handle| SessionActor {
