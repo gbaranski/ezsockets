@@ -59,7 +59,7 @@ impl<I: Clone, C> Clone for Session<I, C> {
 }
 
 impl<I: std::fmt::Display + Clone + Send, C: Send> Session<I, C> {
-    pub fn create<S: SessionExt<ID=I, Call=C> + 'static>(
+    pub fn create<S: SessionExt<ID = I, Call = C> + 'static>(
         session_fn: impl FnOnce(Session<I, C>) -> S,
         session_id: I,
         socket: Socket,

@@ -218,7 +218,7 @@ impl<E: ClientExt> Client<E> {
     /// Call a custom method on the Client.
     /// Refer to `ClientExt::on_call`.
     pub fn call(&self, message: E::Call) {
-        self.calls.send(message).map_err(|_|()).unwrap();
+        self.calls.send(message).map_err(|_| ()).unwrap();
     }
 
     /// Call a custom method on the Client, with a reply from the `ClientExt::on_call`.
