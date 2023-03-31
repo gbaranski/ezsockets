@@ -274,10 +274,9 @@ where
             };
             if self.sender.send(message).is_err() {
                 error!("Socket already closed");
-                break
+                break;
             };
         }
-
     }
 }
 
@@ -287,10 +286,7 @@ pub struct Stream {
 }
 
 impl Stream {
-    fn new<M, S>(
-        stream: S,
-        last_alive: Arc<Mutex<Instant>>,
-    ) -> (JoinHandle<()>, Self)
+    fn new<M, S>(stream: S, last_alive: Arc<Mutex<Instant>>) -> (JoinHandle<()>, Self)
     where
         M: Into<RawMessage> + std::fmt::Debug + Send + 'static,
         S: StreamExt<Item = Result<M, Error>> + Unpin + Send + 'static,
@@ -359,7 +355,6 @@ impl Socket {
             stream_future.await.unwrap();
             sink_future.abort();
             heartbeat_future.abort();
-
         });
 
         Self { sink, stream }

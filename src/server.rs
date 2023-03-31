@@ -205,9 +205,7 @@ impl<E: ServerExt> From<Server<E>> for mpsc::UnboundedSender<E::Call> {
 }
 
 impl<E: ServerExt + 'static> Server<E> {
-    pub fn create(
-        create: impl FnOnce(Self) -> E,
-    ) -> (Self, JoinHandle<()>) {
+    pub fn create(create: impl FnOnce(Self) -> E) -> (Self, JoinHandle<()>) {
         let (connection_sender, connection_receiver) = mpsc::unbounded_channel();
         let (disconnection_sender, disconnection_receiver) = mpsc::unbounded_channel();
         let (call_sender, call_receiver) = mpsc::unbounded_channel();
