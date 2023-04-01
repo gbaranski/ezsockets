@@ -132,9 +132,7 @@ where
                         socket.disconnected = Some(self.disconnections_tx.clone());
                         let session = self.extension.on_connect(socket, request, address).await?;
                         tracing::info!("connection from {address} accepted");
-                        let _ = respond_to.send(session.id.clone());
-
-
+                        let _ = respond_to.send(session.id);
                     }
                     Some(x) = self.disconnections.recv() => {
                         let Disconnected{id, result}: Disconnected<<E::Session as SessionExt>::ID> = *x.downcast().unwrap();
