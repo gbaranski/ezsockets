@@ -291,15 +291,9 @@ impl<E: ClientExt> ClientActor<E> {
         loop {
             tokio::select! {
                 Some(message) = self.socket_receiver.recv() => {
-                    let close =
-                        if let Message::Close(_frame) = &message {
-                            true
-                        } else  {
-                            false
-                        };
-
+                    let is_closing = matches!(&message, Message::Close(_));
                     self.socket.sink.send(message).await?;
-                    if close {
+                    if is_closing {
                         return Ok(())
                     }
                 }
