@@ -61,12 +61,12 @@
 
 use axum_crate as axum;
 
+use crate::CloseCode;
 use crate::CloseFrame;
+use crate::Message;
 use crate::Server;
 use crate::ServerExt;
 use crate::Socket;
-use crate::CloseCode;
-use crate::Message;
 use async_trait::async_trait;
 use axum::extract::ws;
 use axum::extract::ws::rejection::*;
