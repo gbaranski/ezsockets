@@ -131,9 +131,8 @@ where
                     Some(NewConnection{mut socket, address, respond_to, request}) = self.connections.recv() => {
                         socket.disconnected = Some(self.disconnections_tx.clone());
                         let session = self.extension.on_connect(socket, request, address).await?;
-                        let session_id = session.id.clone();
                         tracing::info!("connection from {address} accepted");
-                        let _ = respond_to.send(session_id.clone());
+                        let _ = respond_to.send(session.id.clone());
 
 
                     }
@@ -150,7 +149,7 @@ where
                     }
                     Some(call) = self.calls.recv() => {
                         if let Err(err) = self.extension.on_call(call).await {
-                            tracing::error!("Error when calling {:?}", err);
+                            tracing::error!("error when calling {:?}", err);
                         }
                     }
                 }
