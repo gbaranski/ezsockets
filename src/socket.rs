@@ -389,7 +389,7 @@ impl Socket {
         tokio::spawn(async move {
             stream_future.await.unwrap();
             sink_future.abort();
-            heartbeat_future.map(|fut| fut.abort());
+            if let Some(fut) = heartbeat_future { fut.abort() }
         });
 
         Self { sink, stream }
