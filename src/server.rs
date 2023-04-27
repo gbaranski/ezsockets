@@ -85,13 +85,13 @@
 //! - [tungstenite](crate::tungstenite) - the simplest option based on [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite)
 //! - [axum](crate::axum) - based on [`axum`](https://crates.io/crates/axum), a web framework for Rust
 
+use crate::socket;
 use crate::CloseFrame;
 use crate::Error;
 use crate::Request;
 use crate::Session;
 use crate::SessionExt;
 use crate::Socket;
-use crate::socket;
 use async_trait::async_trait;
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
@@ -211,7 +211,10 @@ impl<E: ServerExt> From<Server<E>> for mpsc::UnboundedSender<E::Call> {
 }
 
 impl<E: ServerExt + 'static> Server<E> {
-    pub fn create_with_config(create: impl FnOnce(Self) -> E, config: Config) -> (Self, JoinHandle<()>) {
+    pub fn create_with_config(
+        create: impl FnOnce(Self) -> E,
+        config: Config,
+    ) -> (Self, JoinHandle<()>) {
         let (connection_sender, connection_receiver) = mpsc::unbounded_channel();
         let (disconnection_sender, disconnection_receiver) = mpsc::unbounded_channel();
         let (call_sender, call_receiver) = mpsc::unbounded_channel();

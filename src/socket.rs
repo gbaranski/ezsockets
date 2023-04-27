@@ -376,9 +376,7 @@ impl Socket {
                                 let timestamp = timestamp.as_millis();
                                 timestamp.to_be_bytes().to_vec()
                             }
-                            HeartbeatMode::Custom(s) => {
-                                s.as_bytes().to_vec()
-                            },
+                            HeartbeatMode::Custom(s) => s.as_bytes().to_vec(),
                         };
                         sink.send_raw(RawMessage::Ping(bytes)).await;
                     }
@@ -389,7 +387,9 @@ impl Socket {
         tokio::spawn(async move {
             stream_future.await.unwrap();
             sink_future.abort();
-            if let Some(fut) = heartbeat_future { fut.abort() }
+            if let Some(fut) = heartbeat_future {
+                fut.abort()
+            }
         });
 
         Self { sink, stream }

@@ -61,13 +61,13 @@
 
 use axum_crate as axum;
 
+use crate::socket;
 use crate::CloseCode;
 use crate::CloseFrame;
 use crate::RawMessage;
 use crate::Server;
 use crate::ServerExt;
 use crate::Socket;
-use crate::socket;
 use async_trait::async_trait;
 use axum::extract::ws;
 use axum::extract::ws::rejection::*;
@@ -174,7 +174,11 @@ impl Upgrade {
     /// When using `WebSocketUpgrade`, the response produced by this method
     /// should be returned from the handler. See the [module docs](self) for an
     /// example.
-    pub fn on_upgrade_with_config<E: ServerExt + 'static>(self, server: Server<E>, config: socket::Config) -> Response {
+    pub fn on_upgrade_with_config<E: ServerExt + 'static>(
+        self,
+        server: Server<E>,
+        config: socket::Config,
+    ) -> Response {
         self.ws.on_upgrade(move |socket| async move {
             let socket = Socket::new(socket, config); // TODO: Make it really configurable via Extensions
             server.accept(socket, self.request, self.address).await;

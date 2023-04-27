@@ -138,7 +138,7 @@ impl ClientConfig {
         self.reconnect_interval = Some(reconnect_interval);
         self
     }
-    
+
     pub fn socket(mut self, socket: socket::Config) -> Self {
         self.socket = socket;
         self
