@@ -5,7 +5,7 @@
 //!
 //! Refer to [`client`] or [`server`] module for detailed implementation guides.
 
-mod socket;
+pub mod socket;
 
 pub use socket::CloseCode;
 pub use socket::CloseFrame;

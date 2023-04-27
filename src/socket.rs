@@ -11,16 +11,43 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone)]
-pub struct Config {
-    pub heartbeat: Duration,
+pub enum HeartbeatMode {
+    /// Sends a timestamp in Ping message
+    TimeStamp,
+    /// Sends a custom string in Ping message
+    Custom(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct HeartbeatConfig {
+    /// How often to send Ping message
+    pub interval: Duration,
+    /// After how many seconds from the ping send the connection should be closed
     pub timeout: Duration,
+    /// Mode of the heartbeat mechanism
+    pub mode: HeartbeatMode,
+}
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// if None, then heartbeat mechanism will not work
+    pub heartbeat: Option<HeartbeatConfig>,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            heartbeat: Duration::from_secs(5),
+            heartbeat: Some(Default::default()),
+        }
+    }
+}
+
+impl Default for HeartbeatConfig {
+    fn default() -> Self {
+        Self {
+            interval: Duration::from_secs(5),
             timeout: Duration::from_secs(10),
+            mode: HeartbeatMode::TimeStamp,
         }
     }
 }
@@ -324,36 +351,45 @@ impl Socket {
         let (sink, stream) = socket.sink_err_into().err_into().split();
         let ((sink_future, sink), (stream_future, stream)) =
             (Sink::new(sink), Stream::new(stream, last_alive.clone()));
-        let heartbeat_future = tokio::spawn({
-            let sink = sink.clone();
-            async move {
-                let mut interval = tokio::time::interval(config.heartbeat);
+        let heartbeat_future = config.heartbeat.map(|hb| {
+            tokio::spawn({
+                let sink = sink.clone();
+                async move {
+                    let mut interval = tokio::time::interval(hb.interval);
 
-                loop {
-                    interval.tick().await;
-                    if last_alive.lock().await.elapsed() > config.timeout {
-                        tracing::info!("closing connection due to timeout");
-                        sink.send_raw(RawMessage::Close(Some(CloseFrame {
-                            code: CloseCode::Normal,
-                            reason: String::from("client didn't respond to Ping frame"),
-                        })))
-                        .await;
-                        return;
+                    loop {
+                        interval.tick().await;
+                        if last_alive.lock().await.elapsed() > hb.timeout {
+                            tracing::info!("closing connection due to timeout");
+                            sink.send_raw(RawMessage::Close(Some(CloseFrame {
+                                code: CloseCode::Normal,
+                                reason: String::from("client didn't respond to Ping frame"),
+                            })))
+                            .await;
+                            return;
+                        }
+                        let bytes = match &hb.mode {
+                            HeartbeatMode::TimeStamp => {
+                                let timestamp = SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap();
+                                let timestamp = timestamp.as_millis();
+                                timestamp.to_be_bytes().to_vec()
+                            }
+                            HeartbeatMode::Custom(s) => {
+                                s.as_bytes().to_vec()
+                            },
+                        };
+                        sink.send_raw(RawMessage::Ping(bytes)).await;
                     }
-                    let timestamp = SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap();
-                    let timestamp = timestamp.as_millis();
-                    let bytes = timestamp.to_be_bytes();
-                    sink.send_raw(RawMessage::Ping(bytes.to_vec())).await;
                 }
-            }
+            })
         });
 
         tokio::spawn(async move {
             stream_future.await.unwrap();
             sink_future.abort();
-            heartbeat_future.abort();
+            heartbeat_future.map(|fut| fut.abort());
         });
 
         Self { sink, stream }

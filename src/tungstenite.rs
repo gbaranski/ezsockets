@@ -31,6 +31,7 @@
 //! }
 //! ```
 
+use crate::server;
 use crate::socket::RawMessage;
 use crate::tungstenite::tungstenite::handshake::server::ErrorResponse;
 use crate::CloseCode;
@@ -139,7 +140,6 @@ cfg_if::cfg_if! {
         use crate::Server;
         use crate::Error;
         use crate::Socket;
-        use crate::socket;
         use crate::ServerExt;
 
         use tokio::net::TcpListener;
@@ -155,7 +155,7 @@ cfg_if::cfg_if! {
         }
 
         impl Acceptor {
-            async fn accept(&self, stream: TcpStream) -> Result<(Socket, Request), Error> {
+            async fn accept(&self, stream: TcpStream, config: server::Config) -> Result<(Socket, Request), Error> {
                  let mut req0 = None;
                  let callback = |req: &http::Request<()>, resp: http::Response<()>| -> Result<http::Response<()>, ErrorResponse> {
                     let mut req1 = Request::builder()
@@ -172,19 +172,19 @@ cfg_if::cfg_if! {
                 let socket = match self {
                     Acceptor::Plain => {
                         let socket = tokio_tungstenite::accept_hdr_async(stream, callback).await?;
-                        Socket::new(socket, socket::Config::default())
+                        Socket::new(socket, config.socket)
                     }
                     #[cfg(feature = "native-tls")]
                     Acceptor::NativeTls(acceptor) => {
                         let tls_stream = acceptor.accept(stream).await?;
                         let socket = tokio_tungstenite::accept_hdr_async(tls_stream, callback).await?;
-                        Socket::new(socket, socket::Config::default())
+                        Socket::new(socket, config.socket)
                     }
                     #[cfg(feature = "rustls")]
                     Acceptor::Rustls(acceptor) => {
                         let tls_stream = acceptor.accept(stream).await?;
                         let socket = tokio_tungstenite::accept_hdr_async(tls_stream, callback).await?;
-                        Socket::new(socket, socket::Config::default())
+                        Socket::new(socket, config.socket)
                     }
                 };
                 Ok((socket, req0.unwrap()))
@@ -208,7 +208,7 @@ cfg_if::cfg_if! {
                         continue;
                     },
                 };
-                let (socket, request) = match acceptor.accept(stream).await {
+                let (socket, request) = match acceptor.accept(stream, server.config.clone()).await {
                     Ok(socket) => socket,
                     Err(err) => {
                         tracing::error!(%address, "failed to accept websocket connection: {:?}", err);

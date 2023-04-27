@@ -48,7 +48,7 @@
 //!
 //! ```
 
-use crate::socket::Config;
+use crate::socket;
 use crate::CloseFrame;
 use crate::Error;
 use crate::Message;
@@ -74,6 +74,7 @@ pub struct ClientConfig {
     url: Url,
     reconnect_interval: Option<Duration>,
     headers: http::HeaderMap,
+    socket: socket::Config,
 }
 
 impl ClientConfig {
@@ -89,6 +90,7 @@ impl ClientConfig {
             url,
             reconnect_interval: Some(DEFAULT_RECONNECT_INTERVAL),
             headers: http::HeaderMap::new(),
+            socket: socket::Config::default(),
         }
     }
 
@@ -134,6 +136,11 @@ impl ClientConfig {
 
     pub fn reconnect_interval(mut self, reconnect_interval: Duration) -> Self {
         self.reconnect_interval = Some(reconnect_interval);
+        self
+    }
+    
+    pub fn socket(mut self, socket: socket::Config) -> Self {
+        self.socket = socket;
         self
     }
 
@@ -260,7 +267,7 @@ pub async fn connect<E: ClientExt + 'static>(
         if let Err(err) = client.on_connect().await {
             tracing::error!("calling `connected()` failed due to {}", err);
         }
-        let socket = Socket::new(stream, Config::default());
+        let socket = Socket::new(stream, config.socket.clone());
         tracing::info!("connected to {}", config.url);
         let mut actor = ClientActor {
             client,
@@ -344,7 +351,7 @@ impl<E: ClientExt> ClientActor<E> {
                     if let Err(err) = self.client.on_connect().await {
                         tracing::error!("calling `connected()` failed due to {}", err);
                     }
-                    let socket = Socket::new(socket, Config::default());
+                    let socket = Socket::new(socket, self.config.socket.clone());
                     self.socket = socket;
                     self.heartbeat = Instant::now();
                     return;

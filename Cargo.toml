@@ -55,8 +55,10 @@ rustdoc-args = ["--cfg", "docsrs"]
 members = [
     "examples/chat-client",
     "examples/chat-server",
+    "examples/chat-server",
     "examples/chat-server-axum",
     "examples/echo-server",
+    "examples/echo-server-custom-config",
     "examples/echo-server-native-tls",
     "examples/simple-client",
     "examples/counter-server"

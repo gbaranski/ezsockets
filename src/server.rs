@@ -91,11 +91,17 @@ use crate::Request;
 use crate::Session;
 use crate::SessionExt;
 use crate::Socket;
+use crate::socket;
 use async_trait::async_trait;
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+
+#[derive(Debug, Clone, Default)]
+pub struct Config {
+    pub socket: socket::Config,
+}
 
 struct NewConnection<E: ServerExt> {
     socket: Socket,
@@ -192,6 +198,7 @@ pub trait ServerExt: Send {
 
 #[derive(Debug)]
 pub struct Server<E: ServerExt> {
+    pub(crate) config: Config,
     connections: mpsc::UnboundedSender<NewConnection<E>>,
     disconnections: mpsc::UnboundedSender<Disconnected<E>>,
     calls: mpsc::UnboundedSender<E::Call>,
@@ -204,7 +211,7 @@ impl<E: ServerExt> From<Server<E>> for mpsc::UnboundedSender<E::Call> {
 }
 
 impl<E: ServerExt + 'static> Server<E> {
-    pub fn create(create: impl FnOnce(Self) -> E) -> (Self, JoinHandle<()>) {
+    pub fn create_with_config(create: impl FnOnce(Self) -> E, config: Config) -> (Self, JoinHandle<()>) {
         let (connection_sender, connection_receiver) = mpsc::unbounded_channel();
         let (disconnection_sender, disconnection_receiver) = mpsc::unbounded_channel();
         let (call_sender, call_receiver) = mpsc::unbounded_channel();
@@ -212,6 +219,7 @@ impl<E: ServerExt + 'static> Server<E> {
             connections: connection_sender,
             calls: call_sender,
             disconnections: disconnection_sender,
+            config,
         };
         let extension = create(handle.clone());
         let actor = ServerActor {
@@ -224,6 +232,10 @@ impl<E: ServerExt + 'static> Server<E> {
         let future = tokio::spawn(actor.run());
 
         (handle, future)
+    }
+
+    pub fn create(create: impl FnOnce(Self) -> E) -> (Self, JoinHandle<()>) {
+        Self::create_with_config(create, Default::default())
     }
 }
 
@@ -283,6 +295,7 @@ impl<E: ServerExt> std::clone::Clone for Server<E> {
             connections: self.connections.clone(),
             disconnections: self.disconnections.clone(),
             calls: self.calls.clone(),
+            config: self.config.clone(),
         }
     }
 }
