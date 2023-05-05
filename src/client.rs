@@ -177,9 +177,9 @@ pub trait ClientExt: Send {
     }
 
     /// Called when the connection is closed.
-    /// 
+    ///
     /// If the connection will reconnect, this method is still called.
-    /// 
+    ///
     /// For reconnections, use `ClientConfig::reconnect_interval`(enabled by default).
     async fn on_close(&mut self) -> Result<(), Error> {
         Ok(())
