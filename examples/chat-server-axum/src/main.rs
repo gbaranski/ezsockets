@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use axum::extract::Extension;
+use axum::extract::Query;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
@@ -137,7 +138,17 @@ async fn main() {
 
 async fn websocket_handler(
     Extension(server): Extension<Server<ChatServer>>,
+    Query(query): Query<HashMap<String, String>>,
     ezsocket: Upgrade,
 ) -> impl IntoResponse {
+    let kick_me = query.get("kick_me");
+    let kick_me = kick_me.map(|s| s.as_str());
+    if matches!(kick_me, Some("Yes")) {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            "we won't accept you because of kick_me query parameter",
+        )
+            .into_response();
+    }
     ezsocket.on_upgrade(server)
 }
