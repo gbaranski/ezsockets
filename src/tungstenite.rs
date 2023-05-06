@@ -31,7 +31,6 @@
 //! }
 //! ```
 
-use crate::socket::RawMessage;
 use crate::tungstenite::tungstenite::handshake::server::ErrorResponse;
 use crate::CloseCode;
 use crate::CloseFrame;
@@ -99,19 +98,19 @@ impl From<TungsteniteCloseCode> for CloseCode {
     }
 }
 
-impl From<RawMessage> for tungstenite::Message {
-    fn from(message: RawMessage) -> Self {
+impl From<Message> for tungstenite::Message {
+    fn from(message: Message) -> Self {
         match message {
-            RawMessage::Text(text) => Self::Text(text),
-            RawMessage::Binary(bytes) => Self::Binary(bytes),
-            RawMessage::Ping(bytes) => Self::Ping(bytes),
-            RawMessage::Pong(bytes) => Self::Pong(bytes),
-            RawMessage::Close(frame) => Self::Close(frame.map(CloseFrame::into)),
+            Message::Text(text) => Self::Text(text),
+            Message::Binary(bytes) => Self::Binary(bytes),
+            Message::Ping(bytes) => Self::Ping(bytes),
+            Message::Pong(bytes) => Self::Pong(bytes),
+            Message::Close(frame) => Self::Close(frame.map(CloseFrame::into)),
         }
     }
 }
 
-impl From<tungstenite::Message> for RawMessage {
+impl From<tungstenite::Message> for Message {
     fn from(message: tungstenite::Message) -> Self {
         match message {
             tungstenite::Message::Text(text) => Self::Text(text),
@@ -120,16 +119,6 @@ impl From<tungstenite::Message> for RawMessage {
             tungstenite::Message::Pong(bytes) => Self::Pong(bytes),
             tungstenite::Message::Close(frame) => Self::Close(frame.map(CloseFrame::from)),
             tungstenite::Message::Frame(_) => unreachable!(),
-        }
-    }
-}
-
-impl From<Message> for tungstenite::Message {
-    fn from(message: Message) -> Self {
-        match message {
-            Message::Text(text) => tungstenite::Message::Text(text),
-            Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
-            Message::Close(frame) => tungstenite::Message::Close(frame.map(CloseFrame::into)),
         }
     }
 }

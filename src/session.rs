@@ -1,14 +1,14 @@
-use std::fmt::Formatter;
-use std::sync::Arc;
-
-use crate::CloseFrame;
+use crate::server::Disconnected;
 use crate::Error;
 use crate::Message;
 use crate::Socket;
+use crate::{CloseCode, CloseFrame};
 use async_trait::async_trait;
+use std::fmt::Formatter;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio::sync::Mutex;
+use tokio::time::Instant;
 
 #[async_trait]
 pub trait SessionExt: Send {
@@ -28,13 +28,10 @@ pub trait SessionExt: Send {
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
 }
 
-type CloseReceiver = oneshot::Receiver<Result<Option<CloseFrame>, Error>>;
-
 pub struct Session<I, C> {
     pub id: I,
     socket: mpsc::UnboundedSender<Message>,
     calls: mpsc::UnboundedSender<C>,
-    closed: Arc<Mutex<Option<CloseReceiver>>>,
 }
 
 impl<I: std::fmt::Debug, C> std::fmt::Debug for Session<I, C> {
@@ -51,12 +48,11 @@ impl<I: Clone, C> Clone for Session<I, C> {
             id: self.id.clone(),
             socket: self.socket.clone(),
             calls: self.calls.clone(),
-            closed: self.closed.clone(),
         }
     }
 }
 
-impl<I: std::fmt::Display + Clone + Send, C: Send> Session<I, C> {
+impl<I: std::fmt::Display + Clone + Send + 'static, C: Send> Session<I, C> {
     pub fn create<S: SessionExt<ID = I, Call = C> + 'static>(
         session_fn: impl FnOnce(Session<I, C>) -> S,
         session_id: I,
@@ -64,39 +60,31 @@ impl<I: std::fmt::Display + Clone + Send, C: Send> Session<I, C> {
     ) -> Self {
         let (socket_sender, socket_receiver) = mpsc::unbounded_channel();
         let (call_sender, call_receiver) = mpsc::unbounded_channel();
-        let (closed_sender, closed_receiver) = oneshot::channel();
+
         let handle = Self {
             id: session_id.clone(),
             socket: socket_sender,
             calls: call_sender,
-            closed: Arc::new(Mutex::new(Some(closed_receiver))),
         };
         let session = session_fn(handle.clone());
-        let mut actor =
-            SessionActor::new(session, session_id, socket_receiver, call_receiver, socket);
-
+        let actor = SessionActor {
+            extension: session,
+            id: session_id,
+            socket_receiver,
+            call_receiver,
+            socket,
+        };
         tokio::spawn(async move {
+            let tx = actor.socket.disconnected.clone().unwrap();
+            let id = actor.id.clone();
             let result = actor.run().await;
-            closed_sender.send(result).unwrap();
+            tx.send(Box::new(Disconnected::<I> { id, result }))
         });
-
         handle
     }
 }
 
 impl<I: std::fmt::Display + Clone, C> Session<I, C> {
-    #[doc(hidden)]
-    /// WARN: Use only if really nessesary.
-    ///
-    /// this uses some hack, which takes ownership of underlaying `oneshot::Receiver`, making it unaccessible for all future calls of this method.
-    pub(super) async fn closed(&self) -> Result<Option<CloseFrame>, Error> {
-        let mut closed = self.closed.lock().await;
-        let closed = closed
-            .take()
-            .expect("someone already called .closed() before");
-        closed.await.unwrap()
-    }
-
     /// Checks if the Session is still alive, if so you can proceed sending calls or messages.
     pub fn alive(&self) -> bool {
         !self.socket.is_closed() && !self.calls.is_closed()
@@ -106,21 +94,21 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     pub fn text(&self, text: impl Into<String>) {
         self.socket
             .send(Message::Text(text.into()))
-            .unwrap_or_else(|_| panic!("Session::text {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
+            .unwrap_or_else(|_| tracing::warn!("Session::text {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Sends a Binary message to the server
     pub fn binary(&self, bytes: impl Into<Vec<u8>>) {
         self.socket
             .send(Message::Binary(bytes.into()))
-            .unwrap_or_else(|_| panic!("Session::binary {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
+            .unwrap_or_else(|_| tracing::warn!("Session::binary {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Calls a method on the session
     pub fn call(&self, call: C) {
         self.calls
             .send(call)
-            .unwrap_or_else(|_| panic!("Session::call {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
+            .unwrap_or_else(|_| tracing::warn!("Session::call {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
@@ -128,12 +116,12 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     pub async fn call_with<R: std::fmt::Debug>(
         &self,
         f: impl FnOnce(oneshot::Sender<R>) -> C,
-    ) -> R {
+    ) -> Option<R> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        self.calls.send(call).map_err(|_| ()).unwrap();
-        receiver.await.unwrap()
+        self.calls.send(call).ok()?;
+        receiver.await.ok()
     }
 }
 
@@ -146,36 +134,42 @@ pub(crate) struct SessionActor<E: SessionExt> {
 }
 
 impl<E: SessionExt> SessionActor<E> {
-    pub(crate) fn new(
-        extension: E,
-        id: E::ID,
-        socket_receiver: mpsc::UnboundedReceiver<Message>,
-        call_receiver: mpsc::UnboundedReceiver<E::Call>,
-        socket: Socket,
-    ) -> Self {
-        Self {
-            id,
-            extension,
-            socket_receiver,
-            call_receiver,
-            socket,
-        }
-    }
-
-    pub(crate) async fn run(&mut self) -> Result<Option<CloseFrame>, Error> {
+    pub(crate) async fn run(mut self) -> Result<Option<CloseFrame>, Error> {
+        let mut interval = tokio::time::interval(self.socket.config.heartbeat);
+        let last_alive = Instant::now();
         loop {
             tokio::select! {
                 biased;
+                _tick = interval.tick() => {
+                    if last_alive.elapsed() > self.socket.config.timeout {
+                        tracing::info!("closing connection due to timeout");
+                         self.socket.sink.send(Message::Close(Some(CloseFrame {
+                            code: CloseCode::Normal,
+                            reason: String::from("client didn't respond to Ping frame"),
+                        }))).await?;
+                        break;
+                    }
+                    // Use chrono Utc::now()
+                    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+                    let timestamp = timestamp.as_millis();
+                    let bytes = timestamp.to_be_bytes();
+                    self.socket.sink.send(Message::Ping(bytes.to_vec())).await?;
+                }
                 Some(message) = self.socket_receiver.recv() => {
-                    self.socket.send(message.clone()).await;
-                    if let Message::Close(frame) = message {
-                        return Ok(frame)
+                    let close = if let Message::Close(frame) = &message {
+                        Some(Ok(frame.clone()))
+                    } else {
+                        None
+                    };
+                    self.socket.sink.send(message.clone()).await?;
+                    if let Some(frame) = close {
+                        return frame
                     }
                 }
                 Some(call) = self.call_receiver.recv() => {
                     self.extension.on_call(call).await?;
                 }
-                message = self.socket.recv() => {
+                message = self.socket.stream.recv() => {
                     match message {
                         Some(Ok(message)) => match message {
                             Message::Text(text) => self.extension.on_text(text).await?,
@@ -183,9 +177,11 @@ impl<E: SessionExt> SessionActor<E> {
                             Message::Close(frame) => {
                                 return Ok(frame.map(CloseFrame::from))
                             },
+                            _ => {}
                         }
                         Some(Err(error)) => {
                             tracing::error!(id = %self.id, "connection error: {error}");
+                            return Err(error)
                         }
                         None => break
                     };

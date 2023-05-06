@@ -5,12 +5,13 @@
 //!
 //! Refer to [`client`] or [`server`] module for detailed implementation guides.
 
+extern crate core;
+
 mod socket;
 
 pub use socket::CloseCode;
 pub use socket::CloseFrame;
 pub use socket::Message;
-pub use socket::RawMessage;
 pub use socket::Sink;
 pub use socket::Socket;
 pub use socket::Stream;

@@ -92,6 +92,7 @@ use crate::Session;
 use crate::SessionExt;
 use crate::Socket;
 use async_trait::async_trait;
+use std::any::Any;
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -104,16 +105,16 @@ struct NewConnection<E: ServerExt> {
     respond_to: oneshot::Sender<<E::Session as SessionExt>::ID>,
 }
 
-struct Disconnected<E: ServerExt> {
-    id: <E::Session as SessionExt>::ID,
-    result: Result<Option<CloseFrame>, Error>,
+pub(crate) struct Disconnected<I> {
+    pub(crate) id: I,
+    pub(crate) result: Result<Option<CloseFrame>, Error>,
 }
 
 struct ServerActor<E: ServerExt> {
     connections: mpsc::UnboundedReceiver<NewConnection<E>>,
-    disconnections: mpsc::UnboundedReceiver<Disconnected<E>>,
+    disconnections: mpsc::UnboundedReceiver<Box<dyn Any + Send>>,
+    disconnections_tx: mpsc::UnboundedSender<Box<dyn Any + Send>>,
     calls: mpsc::UnboundedReceiver<E::Call>,
-    server: Server<E>,
     extension: E,
 }
 
@@ -127,21 +128,14 @@ where
         loop {
             if let Err(err) = async {
                 tokio::select! {
-                    Some(NewConnection{socket, address, respond_to, request}) = self.connections.recv() => {
+                    Some(NewConnection{mut socket, address, respond_to, request}) = self.connections.recv() => {
+                        socket.disconnected = Some(self.disconnections_tx.clone());
                         let session = self.extension.on_connect(socket, request, address).await?;
-                        let session_id = session.id.clone();
                         tracing::info!("connection from {address} accepted");
-                        respond_to.send(session_id.clone()).unwrap();
-
-                        tokio::spawn({
-                            let server = self.server.clone();
-                            async move {
-                                let result = session.closed().await;
-                                server.disconnected(session_id, result).await;
-                            }
-                        });
+                        let _ = respond_to.send(session.id);
                     }
-                    Some(Disconnected{id, result}) = self.disconnections.recv() => {
+                    Some(x) = self.disconnections.recv() => {
+                        let Disconnected{id, result}: Disconnected<<E::Session as SessionExt>::ID> = *x.downcast().unwrap();
                         self.extension.on_disconnect(id.clone()).await?;
                         match result {
                             Ok(Some(CloseFrame { code, reason })) => {
@@ -152,7 +146,9 @@ where
                         };
                     }
                     Some(call) = self.calls.recv() => {
-                        self.extension.on_call(call).await?
+                        if let Err(err) = self.extension.on_call(call).await {
+                            tracing::error!("error when calling {:?}", err);
+                        }
                     }
                 }
                 Ok::<_, Error>(())
@@ -193,7 +189,6 @@ pub trait ServerExt: Send {
 #[derive(Debug)]
 pub struct Server<E: ServerExt> {
     connections: mpsc::UnboundedSender<NewConnection<E>>,
-    disconnections: mpsc::UnboundedSender<Disconnected<E>>,
     calls: mpsc::UnboundedSender<E::Call>,
 }
 
@@ -211,15 +206,14 @@ impl<E: ServerExt + 'static> Server<E> {
         let handle = Self {
             connections: connection_sender,
             calls: call_sender,
-            disconnections: disconnection_sender,
         };
         let extension = create(handle.clone());
         let actor = ServerActor {
             connections: connection_receiver,
             disconnections: disconnection_receiver,
+            disconnections_tx: disconnection_sender,
             calls: call_receiver,
             extension,
-            server: handle.clone(),
         };
         let future = tokio::spawn(actor.run());
 
@@ -248,17 +242,6 @@ impl<E: ServerExt> Server<E> {
         receiver.await.unwrap()
     }
 
-    pub(crate) async fn disconnected(
-        &self,
-        id: <E::Session as SessionExt>::ID,
-        result: Result<Option<CloseFrame>, Error>,
-    ) {
-        self.disconnections
-            .send(Disconnected { id, result })
-            .map_err(|_| ())
-            .unwrap();
-    }
-
     pub fn call(&self, call: E::Call) {
         self.calls.send(call).map_err(|_| ()).unwrap();
     }
@@ -277,11 +260,10 @@ impl<E: ServerExt> Server<E> {
     }
 }
 
-impl<E: ServerExt> std::clone::Clone for Server<E> {
+impl<E: ServerExt> Clone for Server<E> {
     fn clone(&self) -> Self {
         Self {
             connections: self.connections.clone(),
-            disconnections: self.disconnections.clone(),
             calls: self.calls.clone(),
         }
     }

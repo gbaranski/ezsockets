@@ -265,7 +265,7 @@ pub async fn connect<E: ClientExt + 'static>(
         }
         let socket = Socket::new(stream, Config::default());
         tracing::info!("connected to {}", config.url);
-        let mut actor = ClientActor {
+        let actor = ClientActor {
             client,
             socket_receiver,
             call_receiver,
@@ -290,12 +290,13 @@ struct ClientActor<E: ClientExt> {
 }
 
 impl<E: ClientExt> ClientActor<E> {
-    async fn run(&mut self) -> Result<(), Error> {
+    async fn run(mut self) -> Result<(), Error> {
         loop {
             tokio::select! {
                 Some(message) = self.socket_receiver.recv() => {
-                    self.socket.send(message.clone()).await;
-                    if let Message::Close(_frame) = message {
+                    let is_closing = matches!(&message, Message::Close(_));
+                    self.socket.sink.send(message).await?;
+                    if is_closing {
                         return Ok(())
                     }
                 }
@@ -312,6 +313,7 @@ impl<E: ClientExt> ClientActor<E> {
                                     self.client.on_close().await?;
                                     self.reconnect().await;
                                 }
+                                _ => {}
                             };
                         }
                         Some(Err(error)) => {
