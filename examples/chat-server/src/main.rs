@@ -146,16 +146,20 @@ impl ezsockets::SessionExt for SessionActor {
                 let room = args.next().expect("missing <room> argument").to_string();
                 tracing::info!("moving {} to {room}", self.id);
                 self.room = room.clone();
-                self.server.call(Message::Join { id: self.id, room });
+                self.server
+                    .call(Message::Join { id: self.id, room })
+                    .unwrap();
             } else {
                 tracing::error!("unrecognized command: {text}");
             }
         } else {
-            self.server.call(Message::Send {
-                text,
-                from: self.id,
-                room: self.room.clone(),
-            });
+            self.server
+                .call(Message::Send {
+                    text,
+                    from: self.id,
+                    room: self.room.clone(),
+                })
+                .unwrap();
         }
         Ok(())
     }

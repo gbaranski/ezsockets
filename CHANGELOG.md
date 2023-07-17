@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - change `Client::close` to use reference instead of `self`
 - feat: loosen `std::fmt::Debug` constrain on `Call` by @qiujiangkun in https://github.com/gbaranski/ezsockets/pull/39
 - refactor: replace `SessionExt::Args` with `http::Request` by @qiujiangkun and @gbaranski in https://github.com/gbaranski/ezsockets/pull/42
+- robustness: `Server` interface now returns `Result<(), ()>` instead of potentially panicking
 
 
 Migration guide:
