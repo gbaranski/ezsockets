@@ -5,6 +5,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 use ezsockets::axum::Upgrade;
+use ezsockets::CloseFrame;
 use ezsockets::Error;
 use ezsockets::Server;
 use std::collections::HashMap;
@@ -34,7 +35,7 @@ impl ezsockets::ServerExt for ChatServer {
         socket: ezsockets::Socket,
         _request: ezsockets::Request,
         _address: SocketAddr,
-    ) -> Result<Session, Error> {
+    ) -> Result<Session, Option<CloseFrame>> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session::create(
             |_| ChatSession {
