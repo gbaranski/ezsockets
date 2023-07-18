@@ -33,12 +33,10 @@ impl ezsockets::ClientExt for Client {
             Call::NewLine(line) => {
                 if line == "exit" {
                     tracing::info!("exiting...");
-                    self.handle
-                        .close(Some(CloseFrame {
-                            code: CloseCode::Normal,
-                            reason: "adios!".to_string(),
-                        }))
-                        .await;
+                    self.handle.close(Some(CloseFrame {
+                        code: CloseCode::Normal,
+                        reason: "adios!".to_string(),
+                    }));
                     return Ok(());
                 }
                 tracing::info!("sending {line}");

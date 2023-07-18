@@ -137,7 +137,7 @@ where
                             let server = self.server.clone();
                             async move {
                                 let result = session.closed().await;
-                                server.disconnected(session_id, result).await;
+                                server.disconnected(session_id, result);
                             }
                         });
                     }
@@ -248,7 +248,7 @@ impl<E: ServerExt> Server<E> {
         receiver.await.unwrap()
     }
 
-    pub(crate) async fn disconnected(
+    pub(crate) fn disconnected(
         &self,
         id: <E::Session as SessionExt>::ID,
         result: Result<Option<CloseFrame>, Error>,
