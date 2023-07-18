@@ -308,8 +308,10 @@ impl<E: ClientExt> ClientActor<E> {
     async fn run(&mut self) -> Result<(), Error> {
         loop {
             tokio::select! {
-                Some(message) = self.socket_receiver.recv() => {
-                    self.socket.send(message.clone()).await;
+                Some(mut message) = self.socket_receiver.recv() => {
+                    if let Err(_) = self.socket.send(message.clone()).await {
+                        message = Message::Close(None);
+                    }
                     if let Message::Close(_frame) = message {
                         // client closed itself
                         return Ok(())

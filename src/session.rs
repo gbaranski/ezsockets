@@ -169,8 +169,10 @@ impl<E: SessionExt> SessionActor<E> {
         loop {
             tokio::select! {
                 biased;
-                Some(message) = self.socket_receiver.recv() => {
-                    self.socket.send(message.clone()).await;
+                Some(mut message) = self.socket_receiver.recv() => {
+                    if let Err(_) = self.socket.send(message.clone()).await {
+                        message = Message::Close(None);
+                    }
                     if let Message::Close(frame) = message {
                         return Ok(frame)
                     }
