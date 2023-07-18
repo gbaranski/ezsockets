@@ -33,14 +33,16 @@ impl ezsockets::ClientExt for Client {
             Call::NewLine(line) => {
                 if line == "exit" {
                     tracing::info!("exiting...");
-                    self.handle.close(Some(CloseFrame {
-                        code: CloseCode::Normal,
-                        reason: "adios!".to_string(),
-                    }));
+                    self.handle
+                        .close(Some(CloseFrame {
+                            code: CloseCode::Normal,
+                            reason: "adios!".to_string(),
+                        }))
+                        .unwrap();
                     return Ok(());
                 }
                 tracing::info!("sending {line}");
-                self.handle.text(line);
+                self.handle.text(line).unwrap();
             }
         };
         Ok(())
@@ -62,7 +64,7 @@ async fn main() {
         let lines = stdin.lock().lines();
         for line in lines {
             let line = line.unwrap();
-            handle.call(Call::NewLine(line));
+            handle.call(Call::NewLine(line)).unwrap();
         }
     });
     future.await.unwrap();
