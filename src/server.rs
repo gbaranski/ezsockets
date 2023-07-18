@@ -70,6 +70,7 @@
 //!     async fn on_disconnect(
 //!         &mut self,
 //!         _id: <Self::Session as ezsockets::SessionExt>::ID,
+//!         _reason: Result<Option<ezsockets::CloseFrame>, ezsockets::Error>
 //!     ) -> Result<(), ezsockets::Error> {
 //!         Ok(())
 //!     }
@@ -154,14 +155,14 @@ where
                         respond_to.send(()).unwrap_or_default();
                     }
                     Some(Disconnected{id, result}) = self.disconnections.recv() => {
-                        self.extension.on_disconnect(id.clone()).await?;
-                        match result {
+                        match &result {
                             Ok(Some(CloseFrame { code, reason })) => {
                                 tracing::info!(%id, ?code, %reason, "connection closed")
                             }
                             Ok(None) => tracing::info!(%id, "connection closed"),
                             Err(err) => tracing::warn!(%id, "connection closed due to: {err:?}"),
                         };
+                        self.extension.on_disconnect(id.clone(), result).await?;
                     }
                     Some(call) = self.calls.recv() => {
                         self.extension.on_call(call).await?
@@ -196,7 +197,11 @@ pub trait ServerExt: Send {
         Option<CloseFrame>,
     >;
     /// Called when client disconnects from the server.
-    async fn on_disconnect(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), Error>;
+    async fn on_disconnect(
+        &mut self,
+        id: <Self::Session as SessionExt>::ID,
+        reason: Result<Option<CloseFrame>, Error>,
+    ) -> Result<(), Error>;
     /// Handler for custom calls from other parts from your program.
     /// This is useful for concurrency and polymorphism.
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;

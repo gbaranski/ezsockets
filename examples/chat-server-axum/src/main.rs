@@ -52,6 +52,7 @@ impl ezsockets::ServerExt for ChatServer {
     async fn on_disconnect(
         &mut self,
         id: <Self::Session as ezsockets::SessionExt>::ID,
+        _reason: Result<Option<CloseFrame>, Error>,
     ) -> Result<(), Error> {
         assert!(self.sessions.remove(&id).is_some());
         Ok(())
