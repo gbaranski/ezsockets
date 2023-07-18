@@ -19,11 +19,11 @@ pub trait SessionExt: Send {
 
     /// Returns ID of the session.
     fn id(&self) -> &Self::ID;
-    /// Handler for text messages from the client.
+    /// Handler for text messages from the client. Returning an error will force-close the session.
     async fn on_text(&mut self, text: String) -> Result<(), Error>;
-    /// Handler for binary messages from the client.
+    /// Handler for binary messages from the client. Returning an error will force-close the session.
     async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
-    /// Handler for custom calls from other parts from your program.
+    /// Handler for custom calls from other parts from your program. Returning an error will force-close the session.
     /// This is useful for concurrency and polymorphism.
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
 }
@@ -103,24 +103,18 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     }
 
     /// Sends a Text message to the server
-    pub fn text(&self, text: impl Into<String>) {
-        self.socket
-            .send(Message::Text(text.into()))
-            .unwrap_or_else(|_| panic!("Session::text {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
+    pub fn text(&self, text: impl Into<String>) -> Result<(), mpsc::error::SendError<Message>> {
+        self.socket.send(Message::Text(text.into()))
     }
 
     /// Sends a Binary message to the server
-    pub fn binary(&self, bytes: impl Into<Vec<u8>>) {
-        self.socket
-            .send(Message::Binary(bytes.into()))
-            .unwrap_or_else(|_| panic!("Session::binary {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
+    pub fn binary(&self, bytes: impl Into<Vec<u8>>) -> Result<(), mpsc::error::SendError<Message>> {
+        self.socket.send(Message::Binary(bytes.into()))
     }
 
     /// Calls a method on the session
-    pub fn call(&self, call: C) {
-        self.calls
-            .send(call)
-            .unwrap_or_else(|_| panic!("Session::call {PANIC_MESSAGE_UNHANDLED_CLOSE}"));
+    pub fn call(&self, call: C) -> Result<(), mpsc::error::SendError<C>> {
+        self.calls.send(call)
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
@@ -128,17 +122,21 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     pub async fn call_with<R: std::fmt::Debug>(
         &self,
         f: impl FnOnce(oneshot::Sender<R>) -> C,
-    ) -> R {
+    ) -> Option<R> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        self.calls.send(call).map_err(|_| ()).unwrap();
-        receiver.await.unwrap()
+        let Ok(_) = self.calls.send(call) else { return None; };
+        let Ok(result) = receiver.await else { return None; };
+        Some(result)
     }
 
     /// Close the session. Returns an error if the session is already closed.
-    pub async fn close(&self, frame: Option<CloseFrame>) -> Result<(), ()> {
-        self.socket.send(Message::Close(frame)).map_err(|_| ())
+    pub async fn close(
+        &self,
+        frame: Option<CloseFrame>,
+    ) -> Result<(), mpsc::error::SendError<Message>> {
+        self.socket.send(Message::Close(frame))
     }
 }
 
@@ -201,5 +199,3 @@ impl<E: SessionExt> SessionActor<E> {
         Ok(None)
     }
 }
-
-const PANIC_MESSAGE_UNHANDLED_CLOSE: &str = "should not be called after Session close. Try handling Server::disconnect or Session::drop, also you can check whether the Session is alive using Session::alive";

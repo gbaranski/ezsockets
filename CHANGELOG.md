@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - return `Err(Option<CloseFrame>)` from `ServerExt::on_connect()` to reject connections
 - robustness: `Server` interface now returns `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
 - robustness: `Client` interface now returns `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
+- robustness: `Session` interface now returns `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
 
 
 Migration guide:

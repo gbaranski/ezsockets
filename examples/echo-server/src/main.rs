@@ -55,7 +55,7 @@ impl ezsockets::SessionExt for EchoSession {
     }
 
     async fn on_text(&mut self, text: String) -> Result<(), Error> {
-        self.handle.text(text);
+        self.handle.text(text).unwrap();
         Ok(())
     }
 
