@@ -18,7 +18,7 @@ impl ezsockets::ServerExt for EchoServer {
         socket: ezsockets::Socket,
         _request: ezsockets::Request,
         address: SocketAddr,
-    ) -> Result<Session, ezsockets::Error> {
+    ) -> Result<Session, Option<ezsockets::CloseFrame>> {
         let id = address.port();
         let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
         Ok(session)
