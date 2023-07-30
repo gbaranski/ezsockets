@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use ezsockets::CloseFrame;
 use ezsockets::Error;
 use ezsockets::Request;
 use ezsockets::Server;
@@ -52,7 +53,7 @@ impl ezsockets::ServerExt for ChatServer {
         socket: Socket,
         request: Request,
         _address: SocketAddr,
-    ) -> Result<Session, Error> {
+    ) -> Result<Session, Option<CloseFrame>> {
         let value = request.headers().get("Some-Header").unwrap();
         assert_eq!(value, "someValue");
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - change `Client::close()` to use reference instead of `self`; remove `async` qualifier
 - feat: loosen `std::fmt::Debug` constrain on `Call` by @qiujiangkun in https://github.com/gbaranski/ezsockets/pull/39
 - refactor: replace `SessionExt::Args` with `http::Request` by @qiujiangkun and @gbaranski in https://github.com/gbaranski/ezsockets/pull/42
+- fix server bug that would cause the server to crash if `ServerExt::on_connect()` returned an error
+- return `Err(Option<CloseFrame>)` from `ServerExt::on_connect()` to reject connections
 
 
 Migration guide:
@@ -34,7 +36,7 @@ impl ezsockets::ServerExt for ChatServer {
         request: ezsockets::Request, // <----- 3. Add `request: ezsockets::Request` argument.
         //                                        Note: `ezsockets::Request` is an alias for `http::Request`
         address: SocketAddr,
-    ) -> Result<Session, Error> { todo!() }
+    ) -> Result<Session, Option<CloseFrame>> { todo!() } // <----- 4. Return `CloseFrame` if rejecting connection.
     
     // ...
 }
@@ -48,7 +50,7 @@ async fn websocket_handler(
 ) -> impl IntoResponse {
     let session_args = get_session_args();
     // before:
-        ezsocket.on_upgrade(server, session_args) // <----- 4. Remove `session_args` argument
+        ezsocket.on_upgrade(server, session_args) // <----- 5. Remove `session_args` argument
     // after:
         ezsocket.on_upgrade(server)               // <----- Now you can customize the `Session` inside of `ServerExt::on_connect` via `ezsockets::Request`
 }
@@ -59,7 +61,7 @@ async fn websocket_handler(
 ezsockets::tungstenite::run(
     server, 
     "127.0.0.1:8080", 
-    |_| async move { Ok(()) } // <----- 5. Remove the last argument, 
+    |_| async move { Ok(()) } // <----- 6. Remove the last argument, 
                               // Now you can customize the `Session` inside of `ServerExt::on_connect` via `ezsockets::Request`
 ).await.unwrap();
 

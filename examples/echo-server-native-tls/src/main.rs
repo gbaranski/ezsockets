@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use ezsockets::CloseFrame;
 use ezsockets::Error;
 use ezsockets::Server;
 use native_tls::Identity;
@@ -20,7 +21,7 @@ impl ezsockets::ServerExt for EchoServer {
         socket: ezsockets::Socket,
         _request: ezsockets::Request,
         address: SocketAddr,
-    ) -> Result<Session, Error> {
+    ) -> Result<Session, Option<CloseFrame>> {
         let id = address.port();
         let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
         Ok(session)

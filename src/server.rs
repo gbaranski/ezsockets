@@ -61,7 +61,7 @@
 //!         socket: ezsockets::Socket,
 //!         request: ezsockets::Request,
 //!         address: SocketAddr,
-//!     ) -> Result<Session, ezsockets::Error> {
+//!     ) -> Result<Session, Option<ezsockets::CloseFrame>> {
 //!         let id = address.port();
 //!         let session = Session::create(|handle| EchoSession { id, handle }, id, socket);
 //!         Ok(session)
@@ -87,6 +87,7 @@
 
 use crate::CloseFrame;
 use crate::Error;
+use crate::Message;
 use crate::Request;
 use crate::Session;
 use crate::SessionExt;
@@ -97,11 +98,11 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-struct NewConnection<E: ServerExt> {
+struct NewConnection {
     socket: Socket,
     address: SocketAddr,
     request: Request,
-    respond_to: oneshot::Sender<<E::Session as SessionExt>::ID>,
+    respond_to: oneshot::Sender<()>,
 }
 
 struct Disconnected<E: ServerExt> {
@@ -110,7 +111,7 @@ struct Disconnected<E: ServerExt> {
 }
 
 struct ServerActor<E: ServerExt> {
-    connections: mpsc::UnboundedReceiver<NewConnection<E>>,
+    connections: mpsc::UnboundedReceiver<NewConnection>,
     disconnections: mpsc::UnboundedReceiver<Disconnected<E>>,
     calls: mpsc::UnboundedReceiver<E::Call>,
     server: Server<E>,
@@ -128,18 +129,27 @@ where
             if let Err(err) = async {
                 tokio::select! {
                     Some(NewConnection{socket, address, respond_to, request}) = self.connections.recv() => {
-                        let session = self.extension.on_connect(socket, request, address).await?;
-                        let session_id = session.id.clone();
-                        tracing::info!("connection from {address} accepted");
-                        respond_to.send(session_id.clone()).unwrap();
+                        let socket_sink = socket.sink.clone();
+                        match self.extension.on_connect(socket, request, address).await {
+                            Ok(session) => {
+                                tracing::info!("connection from {address} accepted");
+                                let session_id = session.id.clone();
 
-                        tokio::spawn({
-                            let server = self.server.clone();
-                            async move {
-                                let result = session.closed().await;
-                                server.disconnected(session_id, result);
+                                tokio::spawn({
+                                    let server = self.server.clone();
+                                    async move {
+                                        let result = session.closed().await;
+                                        server.disconnected(session_id, result);
+                                    }
+                                });
                             }
-                        });
+                            Err(err) => {
+                                // our extension rejected the connection, so forward the close frame to the client
+                                tracing::info!(?err, "connection from {address} rejected");
+                                socket_sink.send(Message::Close(err)).await;
+                            }
+                        }
+                        respond_to.send(()).unwrap_or_default();
                     }
                     Some(Disconnected{id, result}) = self.disconnections.recv() => {
                         self.extension.on_disconnect(id.clone()).await?;
@@ -181,7 +191,7 @@ pub trait ServerExt: Send {
         address: SocketAddr,
     ) -> Result<
         Session<<Self::Session as SessionExt>::ID, <Self::Session as SessionExt>::Call>,
-        Error,
+        Option<CloseFrame>,
     >;
     /// Called when client disconnects from the server.
     async fn on_disconnect(&mut self, id: <Self::Session as SessionExt>::ID) -> Result<(), Error>;
@@ -192,7 +202,7 @@ pub trait ServerExt: Send {
 
 #[derive(Debug)]
 pub struct Server<E: ServerExt> {
-    connections: mpsc::UnboundedSender<NewConnection<E>>,
+    connections: mpsc::UnboundedSender<NewConnection>,
     disconnections: mpsc::UnboundedSender<Disconnected<E>>,
     calls: mpsc::UnboundedSender<E::Call>,
 }
@@ -228,12 +238,7 @@ impl<E: ServerExt + 'static> Server<E> {
 }
 
 impl<E: ServerExt> Server<E> {
-    pub async fn accept(
-        &self,
-        socket: Socket,
-        request: Request,
-        address: SocketAddr,
-    ) -> <E::Session as SessionExt>::ID {
+    pub async fn accept(&self, socket: Socket, request: Request, address: SocketAddr) {
         // TODO: can we refuse the connection here?
         let (sender, receiver) = oneshot::channel();
         self.connections
@@ -245,7 +250,7 @@ impl<E: ServerExt> Server<E> {
             })
             .map_err(|_| "connections is down")
             .unwrap();
-        receiver.await.unwrap()
+        receiver.await.unwrap_or_default()
     }
 
     pub(crate) fn disconnected(
