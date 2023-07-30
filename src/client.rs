@@ -158,6 +158,12 @@ impl ClientConfig {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum ClientCloseMode {
+    Reconnect,
+    Close,
+}
+
 #[async_trait]
 pub trait ClientExt: Send {
     /// Type the custom call - parameters passed to `on_call`.
@@ -176,13 +182,22 @@ pub trait ClientExt: Send {
         Ok(())
     }
 
-    /// Called when the connection is closed.
+    /// Called when the connection is closed by the server.
     ///
-    /// If the connection will reconnect, this method is still called.
+    /// By default, the client will try to reconnect. Return [`ClientCloseMode::Close`] here to fully close instead.
     ///
     /// For reconnections, use `ClientConfig::reconnect_interval`(enabled by default).
-    async fn on_close(&mut self) -> Result<(), Error> {
-        Ok(())
+    async fn on_close(&mut self, _frame: Option<CloseFrame>) -> Result<ClientCloseMode, Error> {
+        Ok(ClientCloseMode::Reconnect)
+    }
+
+    /// Called when the connection is closed by the socket dying.
+    ///
+    /// By default, the client will try to reconnect. Return [`ClientCloseMode::Close`] here to fully close instead.
+    ///
+    /// For reconnections, use `ClientConfig::reconnect_interval`(enabled by default).
+    async fn on_disconnect(&mut self) -> Result<ClientCloseMode, Error> {
+        Ok(ClientCloseMode::Reconnect)
     }
 }
 
@@ -296,6 +311,7 @@ impl<E: ClientExt> ClientActor<E> {
                 Some(message) = self.socket_receiver.recv() => {
                     self.socket.send(message.clone()).await;
                     if let Message::Close(_frame) = message {
+                        // client closed itself
                         return Ok(())
                     }
                 }
@@ -308,9 +324,13 @@ impl<E: ClientExt> ClientActor<E> {
                              match message.to_owned() {
                                 Message::Text(text) => self.client.on_text(text).await?,
                                 Message::Binary(bytes) => self.client.on_binary(bytes).await?,
-                                Message::Close(_frame) => {
-                                    self.client.on_close().await?;
-                                    self.reconnect().await;
+                                Message::Close(frame) => {
+                                    // client was closed by server
+                                    match self.client.on_close(frame).await?
+                                    {
+                                        ClientCloseMode::Reconnect => self.reconnect().await,
+                                        ClientCloseMode::Close => return Ok(())
+                                    }
                                 }
                             };
                         }
@@ -318,8 +338,12 @@ impl<E: ClientExt> ClientActor<E> {
                             tracing::error!("connection error: {error}");
                         }
                         None => {
-                            self.client.on_close().await?;
-                            self.reconnect().await;
+                            // client socket died
+                            match self.client.on_disconnect().await?
+                            {
+                                ClientCloseMode::Reconnect => self.reconnect().await,
+                                ClientCloseMode::Close => return Ok(())
+                            }
                         }
                     };
                 }

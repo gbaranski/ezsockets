@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - change `Client::close()` to use reference instead of `self`; remove `async` qualifier
 - feat: loosen `std::fmt::Debug` constrain on `Call` by @qiujiangkun in https://github.com/gbaranski/ezsockets/pull/39
 - refactor: replace `SessionExt::Args` with `http::Request` by @qiujiangkun and @gbaranski in https://github.com/gbaranski/ezsockets/pull/42
+- add `ClientExt::on_disconnect()` for socket closure and return a `ClientCloseCode` from `ClientExt::on_close()/on_disconnect()` to control reconnect/full-close behavior
 - add `Session::close()` method
 - fix server bug that would cause the server to crash if `ServerExt::on_connect()` returned an error
 - return `Err(Option<CloseFrame>)` from `ServerExt::on_connect()` to reject connections
