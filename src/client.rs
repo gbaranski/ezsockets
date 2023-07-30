@@ -240,7 +240,7 @@ impl<E: ClientExt> Client<E> {
     /// Disconnect client from the server.
     /// Optionally pass a frame with reason and code.
     /// The client **must not** be used after this method is called.
-    pub async fn close(&self, frame: Option<CloseFrame>) {
+    pub fn close(&self, frame: Option<CloseFrame>) {
         self.socket.send(Message::Close(frame)).unwrap();
     }
 }
