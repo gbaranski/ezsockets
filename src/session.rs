@@ -135,6 +135,11 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
         self.calls.send(call).map_err(|_| ()).unwrap();
         receiver.await.unwrap()
     }
+
+    /// Close the session. Returns an error if the session is already closed.
+    pub async fn close(&self, frame: Option<CloseFrame>) -> Result<(), ()> {
+        self.socket.send(Message::Close(frame)).map_err(|_| ())
+    }
 }
 
 pub(crate) struct SessionActor<E: SessionExt> {
