@@ -6,11 +6,17 @@ use ezsockets::Error;
 use std::io::BufRead;
 use url::Url;
 
-struct Client {}
+enum Call {
+    NewLine(String),
+}
+
+struct Client {
+    handle: ezsockets::Client<Self>,
+}
 
 #[async_trait]
 impl ezsockets::ClientExt for Client {
-    type Call = ();
+    type Call = Call;
 
     async fn on_text(&mut self, text: String) -> Result<(), Error> {
         tracing::info!("received message: {text}");
@@ -23,7 +29,20 @@ impl ezsockets::ClientExt for Client {
     }
 
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
-        let () = call;
+        match call {
+            Call::NewLine(line) => {
+                if line == "exit" {
+                    tracing::info!("exiting...");
+                    self.handle.close(Some(CloseFrame {
+                        code: CloseCode::Normal,
+                        reason: "adios!".to_string(),
+                    }));
+                    return Ok(());
+                }
+                tracing::info!("sending {line}");
+                self.handle.text(line);
+            }
+        };
         Ok(())
     }
 }
@@ -37,26 +56,14 @@ async fn main() {
         .unwrap_or_else(|| "ws://127.0.0.1:8080".to_string());
     let url = Url::parse(&url).unwrap();
     let config = ClientConfig::new(url);
-    let (handle, future) = ezsockets::connect(|_| Client {}, config).await;
+    let (handle, future) = ezsockets::connect(|handle| Client { handle }, config).await;
     tokio::spawn(async move {
-        future.await.unwrap();
-    });
-
-    let stdin = std::io::stdin();
-    let lines = stdin.lock().lines();
-    for line in lines {
-        let line = line.unwrap();
-        if line == "exit" {
-            tracing::info!("exiting...");
-            handle
-                .close(Some(CloseFrame {
-                    code: CloseCode::Normal,
-                    reason: "adios!".to_string(),
-                }))
-                .await;
-            return;
+        let stdin = std::io::stdin();
+        let lines = stdin.lock().lines();
+        for line in lines {
+            let line = line.unwrap();
+            handle.call(Call::NewLine(line));
         }
-        tracing::info!("sending {line}");
-        handle.text(line);
-    }
+    });
+    future.await.unwrap();
 }
