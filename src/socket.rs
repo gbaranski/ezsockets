@@ -270,7 +270,7 @@ where
 
                         continue;
                     }
-                    RawMessage::Close(_) => return,
+                    RawMessage::Close(frame) => Message::Close(frame),
                 }),
                 Err(err) => Err(err), // maybe early return here?
             };
