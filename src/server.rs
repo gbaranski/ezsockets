@@ -264,8 +264,8 @@ impl<E: ServerExt> Server<E> {
             .unwrap_or_default();
     }
 
-    pub fn call(&self, call: E::Call) -> Result<(), ()> {
-        self.calls.send(call).map_err(|_| ())
+    pub fn call(&self, call: E::Call) -> Result<(), mpsc::error::SendError<E::Call>> {
+        self.calls.send(call)
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
