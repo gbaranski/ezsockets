@@ -221,7 +221,10 @@ impl Sink {
         self.sender.send(message.into())
     }
 
-    pub(crate) async fn send_raw(&self, message: RawMessage) -> Result<(), mpsc::error::SendError<RawMessage>> {
+    pub(crate) async fn send_raw(
+        &self,
+        message: RawMessage,
+    ) -> Result<(), mpsc::error::SendError<RawMessage>> {
         self.sender.send(message)
     }
 }
@@ -360,11 +363,14 @@ impl Socket {
         Self { sink, stream }
     }
 
-    pub async fn send(&self, message: Message) -> Result<(), mpsc::error::SendError<Message>> {
+    pub async fn send(&self, message: Message) -> Result<(), mpsc::error::SendError<RawMessage>> {
         self.sink.send(message).await
     }
 
-    pub async fn send_raw(&self, message: RawMessage) -> Result<(), mpsc::error::SendError<RawMessage>> {
+    pub async fn send_raw(
+        &self,
+        message: RawMessage,
+    ) -> Result<(), mpsc::error::SendError<RawMessage>> {
         self.sink.send_raw(message).await
     }
 

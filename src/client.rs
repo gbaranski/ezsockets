@@ -309,7 +309,7 @@ impl<E: ClientExt> ClientActor<E> {
         loop {
             tokio::select! {
                 Some(mut message) = self.socket_receiver.recv() => {
-                    if let Err(_) = self.socket.send(message.clone()).await {
+                    if self.socket.send(message.clone()).await.is_err() {
                         message = Message::Close(None);
                     }
                     if let Message::Close(_frame) = message {

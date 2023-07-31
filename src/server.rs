@@ -146,7 +146,9 @@ where
                             Err(err) => {
                                 // our extension rejected the connection, so forward the close frame to the client
                                 tracing::info!(?err, "connection from {address} rejected");
-                                socket_sink.send(Message::Close(err)).await;
+                                if let Err(err) = socket_sink.send(Message::Close(err)).await {
+                                    tracing::warn!(?err, "failed forwarding close frame to socket after connection rejected");
+                                }
                             }
                         }
                         respond_to.send(()).unwrap_or_default();
