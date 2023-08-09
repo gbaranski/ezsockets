@@ -169,20 +169,20 @@ pub trait ClientExt: Send {
     /// Type the custom call - parameters passed to `on_call`.
     type Call: Send;
 
-    /// Handler for text messages from the server.
+    /// Handler for text messages from the server. Returning an error will force-close the client.
     async fn on_text(&mut self, text: String) -> Result<(), Error>;
-    /// Handler for binary messages from the server.
+    /// Handler for binary messages from the server. Returning an error will force-close the client.
     async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
-    /// Handler for custom calls from other parts from your program.
+    /// Handler for custom calls from other parts from your program. Returning an error will force-close the client.
     /// This is useful for concurrency and polymorphism.
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
 
-    /// Called when the client successfully connected(or reconnected).
+    /// Called when the client successfully connected(or reconnected). Returned errors will be ignored.
     async fn on_connect(&mut self) -> Result<(), Error> {
         Ok(())
     }
 
-    /// Called when the connection is closed by the server.
+    /// Called when the connection is closed by the server. Returning an error will force-close the client.
     ///
     /// By default, the client will try to reconnect. Return [`ClientCloseMode::Close`] here to fully close instead.
     ///
@@ -224,19 +224,19 @@ impl<E: ClientExt> From<Client<E>> for mpsc::UnboundedSender<E::Call> {
 
 impl<E: ClientExt> Client<E> {
     /// Send a text message to the server.
-    pub fn text(&self, text: String) {
-        self.socket.send(Message::Text(text)).unwrap();
+    pub fn text(&self, text: String) -> Result<(), mpsc::error::SendError<Message>> {
+        self.socket.send(Message::Text(text))
     }
 
     /// Send a binary message to the server.
-    pub fn binary(&self, bytes: Vec<u8>) {
-        self.socket.send(Message::Binary(bytes)).unwrap();
+    pub fn binary(&self, bytes: Vec<u8>) -> Result<(), mpsc::error::SendError<Message>> {
+        self.socket.send(Message::Binary(bytes))
     }
 
     /// Call a custom method on the Client.
     /// Refer to `ClientExt::on_call`.
-    pub fn call(&self, message: E::Call) {
-        self.calls.send(message).map_err(|_| ()).unwrap();
+    pub fn call(&self, message: E::Call) -> Result<(), mpsc::error::SendError<E::Call>> {
+        self.calls.send(message)
     }
 
     /// Call a custom method on the Client, with a reply from the `ClientExt::on_call`.
@@ -244,19 +244,19 @@ impl<E: ClientExt> Client<E> {
     pub async fn call_with<R: fmt::Debug>(
         &self,
         f: impl FnOnce(oneshot::Sender<R>) -> E::Call,
-    ) -> R {
+    ) -> Option<R> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        self.calls.send(call).map_err(|_| ()).unwrap();
-        receiver.await.unwrap()
+        let Ok(_) = self.calls.send(call) else { return None; };
+        let Ok(result) = receiver.await else { return None; };
+        Some(result)
     }
 
-    /// Disconnect client from the server.
+    /// Disconnect client from the server. Returns an error if the client is already closed.
     /// Optionally pass a frame with reason and code.
-    /// The client **must not** be used after this method is called.
-    pub fn close(&self, frame: Option<CloseFrame>) {
-        self.socket.send(Message::Close(frame)).unwrap();
+    pub fn close(&self, frame: Option<CloseFrame>) -> Result<(), mpsc::error::SendError<Message>> {
+        self.socket.send(Message::Close(frame))
     }
 }
 
