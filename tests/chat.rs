@@ -107,7 +107,7 @@ impl ezsockets::ServerExt for ChatServer {
                         .join(",")
                 );
                 for session in sessions {
-                    session.text(text.clone());
+                    session.text(text.clone()).unwrap();
                 }
             }
             Message::Join {
@@ -138,7 +138,9 @@ impl ezsockets::ServerExt for ChatServer {
 
                 respond_to.send(()).unwrap();
                 for session in sessions {
-                    session.text(format!("User with ID: {id} just joined {room} room"));
+                    session
+                        .text(format!("User with ID: {id} just joined {room} room"))
+                        .unwrap();
                 }
             }
         };

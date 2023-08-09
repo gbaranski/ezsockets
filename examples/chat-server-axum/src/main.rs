@@ -64,7 +64,7 @@ impl ezsockets::ServerExt for ChatServer {
                 let text = format!("from {from}: {text}");
                 for (id, handle) in sessions {
                     tracing::info!("sending {text} to {id}");
-                    handle.text(text.clone());
+                    handle.text(text.clone()).unwrap();
                 }
             }
         };
