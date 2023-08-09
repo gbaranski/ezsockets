@@ -13,10 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - add `Session::close()` method
 - fix server bug that would cause the server to crash if `ServerExt::on_connect()` returned an error
 - return `Err(Option<CloseFrame>)` from `ServerExt::on_connect()` to reject connections
-- robustness: `Server` interface now returns `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
-- robustness: `Client` interface now returns `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
-- robustness: `Session` interface now returns `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
-- robustness: remove panics from `Sink` API
+- robustness: `Server`, `Client`, `Session`, `Sink` interfaces now return `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
 
 
 Migration guide:
