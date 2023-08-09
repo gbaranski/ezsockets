@@ -217,12 +217,15 @@ impl Sink {
         self.sender.is_closed()
     }
 
-    pub async fn send(&self, message: Message) {
-        self.sender.send(message.into()).unwrap();
+    pub async fn send(&self, message: Message) -> Result<(), mpsc::error::SendError<RawMessage>> {
+        self.sender.send(message.into())
     }
 
-    pub(crate) async fn send_raw(&self, message: RawMessage) {
-        self.sender.send(message).unwrap();
+    pub(crate) async fn send_raw(
+        &self,
+        message: RawMessage,
+    ) -> Result<(), mpsc::error::SendError<RawMessage>> {
+        self.sender.send(message)
     }
 }
 
@@ -333,11 +336,12 @@ impl Socket {
                     interval.tick().await;
                     if last_alive.lock().await.elapsed() > config.timeout {
                         tracing::info!("closing connection due to timeout");
-                        sink.send_raw(RawMessage::Close(Some(CloseFrame {
-                            code: CloseCode::Normal,
-                            reason: String::from("client didn't respond to Ping frame"),
-                        })))
-                        .await;
+                        let _ = sink
+                            .send_raw(RawMessage::Close(Some(CloseFrame {
+                                code: CloseCode::Normal,
+                                reason: String::from("client didn't respond to Ping frame"),
+                            })))
+                            .await;
                         return;
                     }
                     let timestamp = SystemTime::now()
@@ -345,7 +349,7 @@ impl Socket {
                         .unwrap();
                     let timestamp = timestamp.as_millis();
                     let bytes = timestamp.to_be_bytes();
-                    sink.send_raw(RawMessage::Ping(bytes.to_vec())).await;
+                    let _ = sink.send_raw(RawMessage::Ping(bytes.to_vec())).await;
                 }
             }
         });
@@ -359,12 +363,15 @@ impl Socket {
         Self { sink, stream }
     }
 
-    pub async fn send(&self, message: Message) {
-        self.sink.send(message).await;
+    pub async fn send(&self, message: Message) -> Result<(), mpsc::error::SendError<RawMessage>> {
+        self.sink.send(message).await
     }
 
-    pub async fn send_raw(&self, message: RawMessage) {
-        self.sink.send_raw(message).await;
+    pub async fn send_raw(
+        &self,
+        message: RawMessage,
+    ) -> Result<(), mpsc::error::SendError<RawMessage>> {
+        self.sink.send_raw(message).await
     }
 
     pub async fn recv(&mut self) -> Option<Result<Message, Error>> {

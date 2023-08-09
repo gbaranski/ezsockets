@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - robustness: `Server` interface now returns `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
 - robustness: `Client` interface now returns `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
 - robustness: `Session` interface now returns `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
+- robustness: remove panics from `Sink` API
 
 
 Migration guide:
