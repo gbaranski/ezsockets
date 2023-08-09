@@ -87,10 +87,12 @@ impl ezsockets::SessionExt for ChatSession {
     }
     async fn on_text(&mut self, text: String) -> Result<(), Error> {
         tracing::info!("received: {text}");
-        self.server.call(ChatMessage::Send {
-            from: self.id,
-            text,
-        });
+        self.server
+            .call(ChatMessage::Send {
+                from: self.id,
+                text,
+            })
+            .unwrap();
         Ok(())
     }
 
@@ -130,10 +132,12 @@ async fn main() {
     let lines = stdin.lock().lines();
     for line in lines {
         let line = line.unwrap();
-        server.call(ChatMessage::Send {
-            text: line,
-            from: SessionID::MAX, // reserve some ID for the server
-        });
+        server
+            .call(ChatMessage::Send {
+                text: line,
+                from: SessionID::MAX, // reserve some ID for the server
+            })
+            .unwrap();
     }
 }
 

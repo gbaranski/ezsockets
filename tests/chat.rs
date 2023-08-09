@@ -176,16 +176,19 @@ impl ezsockets::SessionExt for SessionActor {
                         room,
                         respond_to,
                     })
-                    .await;
+                    .await
+                    .unwrap();
             } else {
                 tracing::error!("unrecognized command: {text}");
             }
         } else {
-            self.server.call(Message::Send {
-                text,
-                from: self.id,
-                room: self.room.clone(),
-            });
+            self.server
+                .call(Message::Send {
+                    text,
+                    from: self.id,
+                    room: self.room.clone(),
+                })
+                .unwrap();
         }
         Ok(())
     }

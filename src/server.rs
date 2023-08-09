@@ -249,7 +249,7 @@ impl<E: ServerExt> Server<E> {
                 respond_to: sender,
             })
             .map_err(|_| "connections is down")
-            .unwrap();
+            .unwrap_or_default();
         receiver.await.unwrap_or_default()
     }
 
@@ -261,11 +261,11 @@ impl<E: ServerExt> Server<E> {
         self.disconnections
             .send(Disconnected { id, result })
             .map_err(|_| ())
-            .unwrap();
+            .unwrap_or_default();
     }
 
-    pub fn call(&self, call: E::Call) {
-        self.calls.send(call).map_err(|_| ()).unwrap();
+    pub fn call(&self, call: E::Call) -> Result<(), mpsc::error::SendError<E::Call>> {
+        self.calls.send(call)
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
@@ -273,12 +273,13 @@ impl<E: ServerExt> Server<E> {
     pub async fn call_with<R: std::fmt::Debug>(
         &self,
         f: impl FnOnce(oneshot::Sender<R>) -> E::Call,
-    ) -> R {
+    ) -> Option<R> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        self.calls.send(call).map_err(|_| ()).unwrap();
-        receiver.await.unwrap()
+        let Ok(_) = self.calls.send(call) else { return None; };
+        let Ok(result) = receiver.await else { return None; };
+        Some(result)
     }
 }
 
