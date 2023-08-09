@@ -349,7 +349,13 @@ impl Socket {
                         .unwrap();
                     let timestamp = timestamp.as_millis();
                     let bytes = timestamp.to_be_bytes();
-                    let _ = sink.send_raw(RawMessage::Ping(bytes.to_vec())).await;
+                    if sink
+                        .send_raw(RawMessage::Ping(bytes.to_vec()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
             }
         });
