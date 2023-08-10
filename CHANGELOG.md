@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - fix server bug that would cause the server to crash if `ServerExt::on_connect()` returned an error
 - return `Err(Option<CloseFrame>)` from `ServerExt::on_connect()` to reject connections
 - robustness: `Server`, `Client`, `Session`, `Sink` interfaces now return `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
+- add reason to `ServerExt::on_disconnect()`
 
 
 Migration guide:

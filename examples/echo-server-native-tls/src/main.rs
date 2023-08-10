@@ -30,6 +30,7 @@ impl ezsockets::ServerExt for EchoServer {
     async fn on_disconnect(
         &mut self,
         _id: <Self::Session as ezsockets::SessionExt>::ID,
+        _reason: Result<Option<CloseFrame>, Error>,
     ) -> Result<(), Error> {
         Ok(())
     }
