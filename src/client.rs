@@ -203,40 +203,40 @@ pub trait ClientExt: Send {
 
 #[derive(Debug)]
 pub struct Client<E: ClientExt> {
-    socket: mpsc::UnboundedSender<Message>,
-    calls: mpsc::UnboundedSender<E::Call>,
+    to_socket_sender: mpsc::UnboundedSender<Message>,
+    client_call_sender: mpsc::UnboundedSender<E::Call>,
 }
 
 impl<E: ClientExt> Clone for Client<E> {
     fn clone(&self) -> Self {
         Self {
-            socket: self.socket.clone(),
-            calls: self.calls.clone(),
+            to_socket_sender: self.to_socket_sender.clone(),
+            client_call_sender: self.client_call_sender.clone(),
         }
     }
 }
 
 impl<E: ClientExt> From<Client<E>> for mpsc::UnboundedSender<E::Call> {
     fn from(client: Client<E>) -> Self {
-        client.calls
+        client.client_call_sender
     }
 }
 
 impl<E: ClientExt> Client<E> {
     /// Send a text message to the server.
     pub fn text(&self, text: String) -> Result<(), mpsc::error::SendError<Message>> {
-        self.socket.send(Message::Text(text))
+        self.to_socket_sender.send(Message::Text(text))
     }
 
     /// Send a binary message to the server.
     pub fn binary(&self, bytes: Vec<u8>) -> Result<(), mpsc::error::SendError<Message>> {
-        self.socket.send(Message::Binary(bytes))
+        self.to_socket_sender.send(Message::Binary(bytes))
     }
 
     /// Call a custom method on the Client.
     /// Refer to `ClientExt::on_call`.
     pub fn call(&self, message: E::Call) -> Result<(), mpsc::error::SendError<E::Call>> {
-        self.calls.send(message)
+        self.client_call_sender.send(message)
     }
 
     /// Call a custom method on the Client, with a reply from the `ClientExt::on_call`.
@@ -248,7 +248,7 @@ impl<E: ClientExt> Client<E> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        let Ok(_) = self.calls.send(call) else { return None; };
+        let Ok(_) = self.client_call_sender.send(call) else { return None; };
         let Ok(result) = receiver.await else { return None; };
         Some(result)
     }
@@ -256,7 +256,7 @@ impl<E: ClientExt> Client<E> {
     /// Disconnect client from the server. Returns an error if the client is already closed.
     /// Optionally pass a frame with reason and code.
     pub fn close(&self, frame: Option<CloseFrame>) -> Result<(), mpsc::error::SendError<Message>> {
-        self.socket.send(Message::Close(frame))
+        self.to_socket_sender.send(Message::Close(frame))
     }
 }
 
@@ -264,11 +264,11 @@ pub async fn connect<E: ClientExt + 'static>(
     client_fn: impl FnOnce(Client<E>) -> E,
     config: ClientConfig,
 ) -> (Client<E>, impl Future<Output = Result<(), Error>>) {
-    let (socket_sender, socket_receiver) = mpsc::unbounded_channel();
-    let (call_sender, call_receiver) = mpsc::unbounded_channel();
+    let (to_socket_sender, to_socket_receiver) = mpsc::unbounded_channel();
+    let (client_call_sender, client_call_receiver) = mpsc::unbounded_channel();
     let handle = Client {
-        socket: socket_sender,
-        calls: call_sender,
+        to_socket_sender,
+        client_call_sender,
     };
     let mut client = client_fn(handle.clone());
     let future = tokio::spawn(async move {
@@ -282,8 +282,8 @@ pub async fn connect<E: ClientExt + 'static>(
         tracing::info!("connected to {}", config.url);
         let mut actor = ClientActor {
             client,
-            socket_receiver,
-            call_receiver,
+            to_socket_receiver,
+            client_call_receiver,
             socket,
             heartbeat: Instant::now(),
             config,
@@ -297,8 +297,8 @@ pub async fn connect<E: ClientExt + 'static>(
 
 struct ClientActor<E: ClientExt> {
     client: E,
-    socket_receiver: mpsc::UnboundedReceiver<Message>,
-    call_receiver: mpsc::UnboundedReceiver<E::Call>,
+    to_socket_receiver: mpsc::UnboundedReceiver<Message>,
+    client_call_receiver: mpsc::UnboundedReceiver<E::Call>,
     socket: Socket,
     config: ClientConfig,
     heartbeat: Instant,
@@ -308,7 +308,7 @@ impl<E: ClientExt> ClientActor<E> {
     async fn run(&mut self) -> Result<(), Error> {
         loop {
             tokio::select! {
-                Some(mut message) = self.socket_receiver.recv() => {
+                Some(mut message) = self.to_socket_receiver.recv() => {
                     if self.socket.send(message.clone()).await.is_err() {
                         message = Message::Close(None);
                     }
@@ -317,7 +317,7 @@ impl<E: ClientExt> ClientActor<E> {
                         return Ok(())
                     }
                 }
-                Some(call) = self.call_receiver.recv() => {
+                Some(call) = self.client_call_receiver.recv() => {
                     self.client.on_call(call).await?;
                 }
                 result = self.socket.stream.recv() => {

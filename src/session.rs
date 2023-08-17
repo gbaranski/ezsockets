@@ -32,9 +32,9 @@ type CloseReceiver = oneshot::Receiver<Result<Option<CloseFrame>, Error>>;
 
 pub struct Session<I, C> {
     pub id: I,
-    socket: mpsc::UnboundedSender<Message>,
-    calls: mpsc::UnboundedSender<C>,
-    closed: Arc<Mutex<Option<CloseReceiver>>>,
+    to_socket_sender: mpsc::UnboundedSender<Message>,
+    session_call_sender: mpsc::UnboundedSender<C>,
+    closed_indicator: Arc<Mutex<Option<CloseReceiver>>>,
 }
 
 impl<I: std::fmt::Debug, C> std::fmt::Debug for Session<I, C> {
@@ -49,9 +49,9 @@ impl<I: Clone, C> Clone for Session<I, C> {
     fn clone(&self) -> Self {
         Self {
             id: self.id.clone(),
-            socket: self.socket.clone(),
-            calls: self.calls.clone(),
-            closed: self.closed.clone(),
+            to_socket_sender: self.to_socket_sender.clone(),
+            session_call_sender: self.session_call_sender.clone(),
+            closed_indicator: self.closed_indicator.clone(),
         }
     }
 }
@@ -62,18 +62,23 @@ impl<I: std::fmt::Display + Clone + Send, C: Send> Session<I, C> {
         session_id: I,
         socket: Socket,
     ) -> Self {
-        let (socket_sender, socket_receiver) = mpsc::unbounded_channel();
-        let (call_sender, call_receiver) = mpsc::unbounded_channel();
+        let (to_socket_sender, to_socket_receiver) = mpsc::unbounded_channel();
+        let (session_call_sender, session_call_receiver) = mpsc::unbounded_channel();
         let (closed_sender, closed_receiver) = oneshot::channel();
         let handle = Self {
             id: session_id.clone(),
-            socket: socket_sender,
-            calls: call_sender,
-            closed: Arc::new(Mutex::new(Some(closed_receiver))),
+            to_socket_sender,
+            session_call_sender,
+            closed_indicator: Arc::new(Mutex::new(Some(closed_receiver))),
         };
         let session = session_fn(handle.clone());
-        let mut actor =
-            SessionActor::new(session, session_id, socket_receiver, call_receiver, socket);
+        let mut actor = SessionActor::new(
+            session,
+            session_id,
+            to_socket_receiver,
+            session_call_receiver,
+            socket,
+        );
 
         tokio::spawn(async move {
             let result = actor.run().await;
@@ -88,33 +93,33 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     #[doc(hidden)]
     /// WARN: Use only if really nessesary.
     ///
-    /// this uses some hack, which takes ownership of underlaying `oneshot::Receiver`, making it unaccessible for all future calls of this method.
-    pub(super) async fn closed(&self) -> Result<Option<CloseFrame>, Error> {
-        let mut closed = self.closed.lock().await;
-        let closed = closed
+    /// this uses some hack, which takes ownership of underlying `oneshot::Receiver`, making it inaccessible for all future calls of this method.
+    pub(super) async fn await_close(&self) -> Result<Option<CloseFrame>, Error> {
+        let mut closed_indicator = self.closed_indicator.lock().await;
+        let closed_indicator = closed_indicator
             .take()
-            .expect("someone already called .closed() before");
-        closed.await.unwrap()
+            .expect("someone already called .await_close() before");
+        closed_indicator.await.unwrap()
     }
 
     /// Checks if the Session is still alive, if so you can proceed sending calls or messages.
     pub fn alive(&self) -> bool {
-        !self.socket.is_closed() && !self.calls.is_closed()
+        !self.to_socket_sender.is_closed() && !self.session_call_sender.is_closed()
     }
 
     /// Sends a Text message to the server
     pub fn text(&self, text: impl Into<String>) -> Result<(), mpsc::error::SendError<Message>> {
-        self.socket.send(Message::Text(text.into()))
+        self.to_socket_sender.send(Message::Text(text.into()))
     }
 
     /// Sends a Binary message to the server
     pub fn binary(&self, bytes: impl Into<Vec<u8>>) -> Result<(), mpsc::error::SendError<Message>> {
-        self.socket.send(Message::Binary(bytes.into()))
+        self.to_socket_sender.send(Message::Binary(bytes.into()))
     }
 
     /// Calls a method on the session
     pub fn call(&self, call: C) -> Result<(), mpsc::error::SendError<C>> {
-        self.calls.send(call)
+        self.session_call_sender.send(call)
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
@@ -126,7 +131,7 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        let Ok(_) = self.calls.send(call) else { return None; };
+        let Ok(_) = self.session_call_sender.send(call) else { return None; };
         let Ok(result) = receiver.await else { return None; };
         Some(result)
     }
@@ -136,15 +141,15 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
         &self,
         frame: Option<CloseFrame>,
     ) -> Result<(), mpsc::error::SendError<Message>> {
-        self.socket.send(Message::Close(frame))
+        self.to_socket_sender.send(Message::Close(frame))
     }
 }
 
 pub(crate) struct SessionActor<E: SessionExt> {
     pub extension: E,
     id: E::ID,
-    socket_receiver: mpsc::UnboundedReceiver<Message>,
-    call_receiver: mpsc::UnboundedReceiver<E::Call>,
+    to_socket_receiver: mpsc::UnboundedReceiver<Message>,
+    session_call_receiver: mpsc::UnboundedReceiver<E::Call>,
     socket: Socket,
 }
 
@@ -152,15 +157,15 @@ impl<E: SessionExt> SessionActor<E> {
     pub(crate) fn new(
         extension: E,
         id: E::ID,
-        socket_receiver: mpsc::UnboundedReceiver<Message>,
-        call_receiver: mpsc::UnboundedReceiver<E::Call>,
+        to_socket_receiver: mpsc::UnboundedReceiver<Message>,
+        session_call_receiver: mpsc::UnboundedReceiver<E::Call>,
         socket: Socket,
     ) -> Self {
         Self {
-            id,
             extension,
-            socket_receiver,
-            call_receiver,
+            id,
+            to_socket_receiver,
+            session_call_receiver,
             socket,
         }
     }
@@ -169,15 +174,16 @@ impl<E: SessionExt> SessionActor<E> {
         loop {
             tokio::select! {
                 biased;
-                Some(mut message) = self.socket_receiver.recv() => {
+                Some(mut message) = self.to_socket_receiver.recv() => {
                     if self.socket.send(message.clone()).await.is_err() {
                         message = Message::Close(None);
                     }
                     if let Message::Close(frame) = message {
+                        // session closed itself
                         return Ok(frame)
                     }
                 }
-                Some(call) = self.call_receiver.recv() => {
+                Some(call) = self.session_call_receiver.recv() => {
                     self.extension.on_call(call).await?;
                 }
                 message = self.socket.recv() => {
@@ -186,6 +192,7 @@ impl<E: SessionExt> SessionActor<E> {
                             Message::Text(text) => self.extension.on_text(text).await?,
                             Message::Binary(bytes) => self.extension.on_binary(bytes).await?,
                             Message::Close(frame) => {
+                                // closed by client
                                 return Ok(frame.map(CloseFrame::from))
                             },
                         }
