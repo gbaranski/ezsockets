@@ -112,9 +112,9 @@ struct Disconnected<E: ServerExt> {
 }
 
 struct ServerActor<E: ServerExt> {
-    connections: mpsc::UnboundedReceiver<NewConnection>,
-    disconnections: mpsc::UnboundedReceiver<Disconnected<E>>,
-    calls: mpsc::UnboundedReceiver<E::Call>,
+    connection_receiver: mpsc::UnboundedReceiver<NewConnection>,
+    disconnection_receiver: mpsc::UnboundedReceiver<Disconnected<E>>,
+    server_call_receiver: mpsc::UnboundedReceiver<E::Call>,
     server: Server<E>,
     extension: E,
 }
@@ -129,7 +129,7 @@ where
         loop {
             if let Err(err) = async {
                 tokio::select! {
-                    Some(NewConnection{socket, address, respond_to, request}) = self.connections.recv() => {
+                    Some(NewConnection{socket, address, respond_to, request}) = self.connection_receiver.recv() => {
                         let socket_sink = socket.sink.clone();
                         match self.extension.on_connect(socket, request, address).await {
                             Ok(session) => {
@@ -139,7 +139,7 @@ where
                                 tokio::spawn({
                                     let server = self.server.clone();
                                     async move {
-                                        let result = session.closed().await;
+                                        let result = session.await_close().await;
                                         server.disconnected(session_id, result);
                                     }
                                 });
@@ -154,7 +154,7 @@ where
                         }
                         respond_to.send(()).unwrap_or_default();
                     }
-                    Some(Disconnected{id, result}) = self.disconnections.recv() => {
+                    Some(Disconnected{id, result}) = self.disconnection_receiver.recv() => {
                         match &result {
                             Ok(Some(CloseFrame { code, reason })) => {
                                 tracing::info!(%id, ?code, %reason, "connection closed")
@@ -164,7 +164,7 @@ where
                         };
                         self.extension.on_disconnect(id.clone(), result).await?;
                     }
-                    Some(call) = self.calls.recv() => {
+                    Some(call) = self.server_call_receiver.recv() => {
                         self.extension.on_call(call).await?
                     }
                 }
@@ -209,14 +209,14 @@ pub trait ServerExt: Send {
 
 #[derive(Debug)]
 pub struct Server<E: ServerExt> {
-    connections: mpsc::UnboundedSender<NewConnection>,
-    disconnections: mpsc::UnboundedSender<Disconnected<E>>,
-    calls: mpsc::UnboundedSender<E::Call>,
+    connection_sender: mpsc::UnboundedSender<NewConnection>,
+    disconnection_sender: mpsc::UnboundedSender<Disconnected<E>>,
+    server_call_sender: mpsc::UnboundedSender<E::Call>,
 }
 
 impl<E: ServerExt> From<Server<E>> for mpsc::UnboundedSender<E::Call> {
     fn from(server: Server<E>) -> Self {
-        server.calls
+        server.server_call_sender
     }
 }
 
@@ -224,17 +224,17 @@ impl<E: ServerExt + 'static> Server<E> {
     pub fn create(create: impl FnOnce(Self) -> E) -> (Self, JoinHandle<()>) {
         let (connection_sender, connection_receiver) = mpsc::unbounded_channel();
         let (disconnection_sender, disconnection_receiver) = mpsc::unbounded_channel();
-        let (call_sender, call_receiver) = mpsc::unbounded_channel();
+        let (server_call_sender, server_call_receiver) = mpsc::unbounded_channel();
         let handle = Self {
-            connections: connection_sender,
-            calls: call_sender,
-            disconnections: disconnection_sender,
+            connection_sender,
+            server_call_sender,
+            disconnection_sender,
         };
         let extension = create(handle.clone());
         let actor = ServerActor {
-            connections: connection_receiver,
-            disconnections: disconnection_receiver,
-            calls: call_receiver,
+            connection_receiver,
+            disconnection_receiver,
+            server_call_receiver,
             extension,
             server: handle.clone(),
         };
@@ -247,17 +247,17 @@ impl<E: ServerExt + 'static> Server<E> {
 impl<E: ServerExt> Server<E> {
     pub async fn accept(&self, socket: Socket, request: Request, address: SocketAddr) {
         // TODO: can we refuse the connection here?
-        let (sender, receiver) = oneshot::channel();
-        self.connections
+        let (connection_indicator_sender, connection_indicator_receiver) = oneshot::channel();
+        self.connection_sender
             .send(NewConnection {
                 socket,
                 request,
                 address,
-                respond_to: sender,
+                respond_to: connection_indicator_sender,
             })
             .map_err(|_| "connections is down")
             .unwrap_or_default();
-        receiver.await.unwrap_or_default()
+        connection_indicator_receiver.await.unwrap_or_default()
     }
 
     pub(crate) fn disconnected(
@@ -265,14 +265,14 @@ impl<E: ServerExt> Server<E> {
         id: <E::Session as SessionExt>::ID,
         result: Result<Option<CloseFrame>, Error>,
     ) {
-        self.disconnections
+        self.disconnection_sender
             .send(Disconnected { id, result })
             .map_err(|_| ())
             .unwrap_or_default();
     }
 
     pub fn call(&self, call: E::Call) -> Result<(), mpsc::error::SendError<E::Call>> {
-        self.calls.send(call)
+        self.server_call_sender.send(call)
     }
 
     /// Calls a method on the session, allowing the Session to respond with oneshot::Sender.
@@ -284,7 +284,7 @@ impl<E: ServerExt> Server<E> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        let Ok(_) = self.calls.send(call) else { return None; };
+        let Ok(_) = self.server_call_sender.send(call) else { return None; };
         let Ok(result) = receiver.await else { return None; };
         Some(result)
     }
@@ -293,9 +293,9 @@ impl<E: ServerExt> Server<E> {
 impl<E: ServerExt> std::clone::Clone for Server<E> {
     fn clone(&self) -> Self {
         Self {
-            connections: self.connections.clone(),
-            disconnections: self.disconnections.clone(),
-            calls: self.calls.clone(),
+            connection_sender: self.connection_sender.clone(),
+            disconnection_sender: self.disconnection_sender.clone(),
+            server_call_sender: self.server_call_sender.clone(),
         }
     }
 }
