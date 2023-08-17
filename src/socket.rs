@@ -250,6 +250,7 @@ where
             let result = result.map(M::into);
             tracing::trace!("received message: {:?}", result);
 
+            let mut closing = false;
             let message = match result {
                 Ok(message) => Ok(match message {
                     RawMessage::Text(text) => Message::Text(text),
@@ -270,12 +271,23 @@ where
 
                         continue;
                     }
-                    RawMessage::Close(frame) => Message::Close(frame),
+                    RawMessage::Close(frame) => {
+                        closing = true;
+                        Message::Close(frame)
+                    }
                 }),
                 Err(err) => Err(err), // maybe early return here?
             };
             if self.sender.send(message).is_err() {
-                tracing::error!("failed to send message. stream is closed");
+                // In websockets, you always echo a close frame received from your connection partner back to them.
+                // This means a normal close sequence will always end with the following line emitted by the socket of
+                // the client/server that initiated the close sequence (in response to the close frame echoed by their
+                // partner).
+                if closing {
+                    tracing::trace!("stream is closed");
+                } else {
+                    tracing::warn!("failed to forward message. stream is disconnected");
+                }
                 break;
             };
         }
