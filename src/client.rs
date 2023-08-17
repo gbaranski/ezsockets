@@ -308,12 +308,13 @@ impl<E: ClientExt> ClientActor<E> {
     async fn run(&mut self) -> Result<(), Error> {
         loop {
             tokio::select! {
-                Some(mut message) = self.to_socket_receiver.recv() => {
-                    if self.socket.send(message.clone()).await.is_err() {
-                        message = Message::Close(None);
+                Some(message) = self.to_socket_receiver.recv() => {
+                    let mut closed_self = matches!(message, Message::Close(_));
+                    if self.socket.send(message).await.is_err() {
+                        closed_self = true;
                     }
-                    if let Message::Close(_frame) = message {
-                        // client closed itself
+                    if closed_self {
+                        tracing::trace!("client closed itself");
                         return Ok(())
                     }
                 }
@@ -327,7 +328,7 @@ impl<E: ClientExt> ClientActor<E> {
                                 Message::Text(text) => self.client.on_text(text).await?,
                                 Message::Binary(bytes) => self.client.on_binary(bytes).await?,
                                 Message::Close(frame) => {
-                                    // client was closed by server
+                                    tracing::trace!("client closed by server");
                                     match self.client.on_close(frame).await?
                                     {
                                         ClientCloseMode::Reconnect => self.reconnect().await,
@@ -340,7 +341,7 @@ impl<E: ClientExt> ClientActor<E> {
                             tracing::error!("connection error: {error}");
                         }
                         None => {
-                            // client socket died
+                            tracing::trace!("client socket died");
                             match self.client.on_disconnect().await?
                             {
                                 ClientCloseMode::Reconnect => self.reconnect().await,
