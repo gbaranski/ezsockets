@@ -172,7 +172,7 @@ where
                 Ok::<_, Error>(())
             }
                 .await {
-                tracing::error!("error when processing: {err:?}");
+                tracing::warn!("error when processing: {err:?}");
             }
         }
     }

@@ -82,7 +82,7 @@ impl<I: std::fmt::Display + Clone + Send, C: Send> Session<I, C> {
 
         tokio::spawn(async move {
             let result = actor.run().await;
-            closed_sender.send(result).unwrap();
+            closed_sender.send(result).unwrap_or_default();
         });
 
         handle
@@ -99,7 +99,9 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
         let closed_indicator = closed_indicator
             .take()
             .expect("someone already called .await_close() before");
-        closed_indicator.await.unwrap()
+        closed_indicator
+            .await
+            .unwrap_or(Err("session actor crashed".into()))
     }
 
     /// Checks if the Session is still alive, if so you can proceed sending calls or messages.
@@ -201,7 +203,7 @@ impl<E: SessionExt> SessionActor<E> {
                             },
                         }
                         Some(Err(error)) => {
-                            tracing::error!(id = %self.id, "connection error: {error}");
+                            tracing::warn!(id = %self.id, "connection error: {error}");
                         }
                         None => break
                     };

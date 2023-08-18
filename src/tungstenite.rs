@@ -165,7 +165,8 @@ cfg_if::cfg_if! {
                     for (k, v) in req.headers() {
                         req1 = req1.header(k, v);
                     }
-                    req0 = Some(req1.body(()).unwrap());
+                    let Ok(body) = req1.body(()) else { return Err(ErrorResponse::default()); };
+                    req0 = Some(body);
 
                     Ok(resp)
                 };
@@ -187,7 +188,8 @@ cfg_if::cfg_if! {
                         Socket::new(socket, socket::Config::default())
                     }
                 };
-                Ok((socket, req0.unwrap()))
+                let Some(req_body) = req0 else { return Err("invalid request body".into()); };
+                Ok((socket, req_body))
             }
         }
 
@@ -204,14 +206,14 @@ cfg_if::cfg_if! {
                 let (stream, address) = match listener.accept().await {
                     Ok(stream) => stream,
                     Err(err) => {
-                        tracing::error!("failed to accept tcp connection: {:?}", err);
+                        tracing::warn!("failed to accept tcp connection: {:?}", err);
                         continue;
                     },
                 };
                 let (socket, request) = match acceptor.accept(stream).await {
                     Ok(socket) => socket,
                     Err(err) => {
-                        tracing::error!(%address, "failed to accept websocket connection: {:?}", err);
+                        tracing::warn!(%address, "failed to accept websocket connection: {:?}", err);
                         continue;
                     }
                 };

@@ -300,6 +300,7 @@ pub async fn connect<E: ClientExt + 'static>(
         let (stream, _) = tokio_tungstenite::connect_async(http_request).await?;
         if let Err(err) = client.on_connect().await {
             tracing::error!("calling on_connect() failed due to {}", err);
+            return Err(err);
         }
         let socket = Socket::new(stream, Config::default());
         tracing::info!("connected to {}", config.url);
@@ -314,7 +315,7 @@ pub async fn connect<E: ClientExt + 'static>(
         actor.run().await?;
         Ok(())
     });
-    let future = async move { future.await.unwrap() };
+    let future = async move { future.await.unwrap_or(Err("client actor crashed".into())) };
     (handle, future)
 }
 
@@ -354,20 +355,20 @@ impl<E: ClientExt> ClientActor<E> {
                                     tracing::trace!("client closed by server");
                                     match self.client.on_close(frame).await?
                                     {
-                                        ClientCloseMode::Reconnect => self.reconnect().await,
+                                        ClientCloseMode::Reconnect => { if !self.try_reconnect().await { return Ok(()) } }
                                         ClientCloseMode::Close => return Ok(())
                                     }
                                 }
                             };
                         }
                         Some(Err(error)) => {
-                            tracing::error!("connection error: {error}");
+                            tracing::warn!("connection error: {error}");
                         }
                         None => {
                             tracing::trace!("client socket died");
                             match self.client.on_disconnect().await?
                             {
-                                ClientCloseMode::Reconnect => self.reconnect().await,
+                                ClientCloseMode::Reconnect => { if !self.try_reconnect().await { return Ok(()) } }
                                 ClientCloseMode::Close => return Ok(())
                             }
                         }
@@ -380,11 +381,11 @@ impl<E: ClientExt> ClientActor<E> {
         Ok(())
     }
 
-    async fn reconnect(&mut self) {
-        let reconnect_interval = self
-            .config
-            .reconnect_interval
-            .expect("reconnect interval should be set for reconnecting");
+    async fn try_reconnect(&mut self) -> bool {
+        let Some(reconnect_interval) = self.config.reconnect_interval else {
+            tracing::warn!("no reconnect interval set, aborting reconnect attempt");
+            return false;
+        };
         tracing::info!("reconnecting in {}s", reconnect_interval.as_secs());
         for i in 1.. {
             tokio::time::sleep(reconnect_interval).await;
@@ -400,10 +401,10 @@ impl<E: ClientExt> ClientActor<E> {
                     let socket = Socket::new(socket, Config::default());
                     self.socket = socket;
                     self.heartbeat = Instant::now();
-                    return;
+                    return true;
                 }
                 Err(err) => {
-                    tracing::error!(
+                    tracing::warn!(
                         "reconnecting failed due to {}. will retry in {}s",
                         err,
                         reconnect_interval.as_secs()
@@ -411,5 +412,7 @@ impl<E: ClientExt> ClientActor<E> {
                 }
             };
         }
+
+        false
     }
 }

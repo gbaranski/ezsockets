@@ -111,7 +111,9 @@ where
         for (k, v) in req.headers() {
             pure_req = pure_req.header(k, v);
         }
-        let pure_req = pure_req.body(()).unwrap();
+        let Ok(pure_req) = pure_req.body(()) else {
+            return Err(ConnectionNotUpgradable::default().into());
+        };
 
         Ok(Self {
             ws: ws::WebSocketUpgrade::from_request(req, state).await?,
@@ -129,7 +131,7 @@ impl From<ws::Message> for RawMessage {
             ws::Message::Ping(ping) => RawMessage::Ping(ping),
             ws::Message::Pong(pong) => RawMessage::Pong(pong),
             ws::Message::Close(Some(close)) => RawMessage::Close(Some(CloseFrame {
-                code: CloseCode::try_from(close.code).unwrap(),
+                code: CloseCode::try_from(close.code).unwrap_or(CloseCode::Abnormal),
                 reason: close.reason.into(),
             })),
             ws::Message::Close(None) => RawMessage::Close(None),
