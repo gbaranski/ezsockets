@@ -215,7 +215,7 @@ cfg_if::cfg_if! {
                         continue;
                     }
                 };
-                server.accept(socket, request, address).await;
+                server.accept(socket, request, address);
             }
         }
 
