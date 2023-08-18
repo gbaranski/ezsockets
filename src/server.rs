@@ -167,6 +167,7 @@ where
                     Some(call) = self.server_call_receiver.recv() => {
                         self.extension.on_call(call).await?
                     }
+                    else => return Err("server actor branches broken".into()),
                 }
                 Ok::<_, Error>(())
             }
