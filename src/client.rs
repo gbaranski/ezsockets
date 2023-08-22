@@ -92,6 +92,9 @@ impl ClientConfig {
         }
     }
 
+    /// Add 'basic' header.
+    /// Note that additional headers are not supported by the websockets spec, so may not be supported by all
+    /// implementations.
     pub fn basic(mut self, username: impl fmt::Display, password: impl fmt::Display) -> Self {
         let credentials =
             base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
@@ -102,7 +105,10 @@ impl ClientConfig {
         self
     }
 
+    /// Add 'bearer' header.
     /// If invalid(outside of visible ASCII characters ranged between 32-127) token is passed, this function will panic.
+    /// Note that additional headers are not supported by the websockets spec, so may not be supported by all
+    /// implementations.
     pub fn bearer(mut self, token: impl fmt::Display) -> Self {
         self.headers.insert(
             http::header::AUTHORIZATION,
@@ -112,7 +118,11 @@ impl ClientConfig {
         self
     }
 
-    /// If you suppose the header name or value might be invalid, create `http::header::HeaderName` and `http::header::HeaderValue` on your side, and then pass it to this function
+    /// Add custom header.
+    /// If you suppose the header name or value might be invalid, create `http::header::HeaderName` and
+    /// `http::header::HeaderValue` on your side, and then pass it to this function.
+    /// Note that additional headers are not supported by the websockets spec, so may not be supported by all
+    /// implementations.
     pub fn header<K, V>(mut self, key: K, value: V) -> Self
     where
         HeaderName: TryFrom<K>,
@@ -129,6 +139,13 @@ impl ClientConfig {
             .map_err(Into::into)
             .expect("invalid header value");
         self.headers.insert(name, value);
+        self
+    }
+
+    /// Insert query parameters into the connection request URI.
+    /// Query parameters are supported by the websockets spec, so they will always be available to the connecting server.
+    pub fn query_parameter(mut self, key: &str, value: &str) -> Self {
+        self.url.query_pairs_mut().append_pair(key, value);
         self
     }
 

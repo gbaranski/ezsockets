@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - robustness: `Server`, `Client`, `Session`, `Sink` interfaces now return `Result<(), tokio::sync::mpsc::error::SendError>` instead of potentially panicking
 - add reason to `ServerExt::on_disconnect()`
 - improved tracing emitted during close sequences
+- add `ClientConfig::query_parameter()` so connection requests can pass data via the URI (since additional connection headers are not supported by the websockets spec, this method should be more compatible with other implementations)
 
 
 Migration guide:
