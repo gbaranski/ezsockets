@@ -12,17 +12,42 @@ use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-#[derive(Debug, Clone)]
-pub struct Config {
-    pub heartbeat: Duration,
-    pub timeout: Duration,
+/// Wrapper trait for `Fn(Duration) -> RawMessage`.
+pub trait SocketHeartbeatPingFn: Fn(Duration) -> RawMessage + Sync + Send {}
+impl<F> SocketHeartbeatPingFn for F where F: Fn(Duration) -> RawMessage + Sync + Send {}
+pub type SocketHeartbeatPingFnT = dyn SocketHeartbeatPingFn<Output = RawMessage>;
+
+impl std::fmt::Debug for SocketHeartbeatPingFnT {
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Ok(())
+    }
 }
 
-impl Default for Config {
+/// Socket configuration.
+#[derive(Debug, Clone)]
+pub struct SocketConfig {
+    /// Duration between each heartbeat check.
+    pub heartbeat: Duration,
+    /// Duration before the keep-alive will fail if there are no new stream messages.
+    pub timeout: Duration,
+    /// Convert 'current time as duration since UNIX_EPOCH' into a ping message (on heartbeat).
+    /// This may be useful for manually implementing Ping/Pong messages via `RawMessage::Text` or `RawMessage::Binary`
+    /// if Ping/Pong are not available for your socket (e.g. in browser).
+    /// The default function outputs a standard `RawMessage::Ping`, with the payload set to the timestamp in milliseconds in
+    /// big-endian bytes.
+    pub heartbeat_ping_msg_fn: Arc<dyn SocketHeartbeatPingFn>,
+}
+
+impl Default for SocketConfig {
     fn default() -> Self {
         Self {
             heartbeat: Duration::from_secs(5),
             timeout: Duration::from_secs(10),
+            heartbeat_ping_msg_fn: Arc::new(|timestamp: Duration| {
+                let timestamp = timestamp.as_millis();
+                let bytes = timestamp.to_be_bytes();
+                RawMessage::Ping(bytes.to_vec())
+            }),
         }
     }
 }
@@ -398,6 +423,7 @@ where
         while let Some(result) = self.stream.next().await {
             let result = result.map(M::into);
             tracing::trace!("received message: {:?}", result);
+            *self.last_alive.lock().await = Instant::now();
 
             let mut closing = false;
             let message = match result {
@@ -406,7 +432,6 @@ where
                     RawMessage::Binary(bytes) => Message::Binary(bytes),
                     RawMessage::Ping(_bytes) => continue,
                     RawMessage::Pong(bytes) => {
-                        *self.last_alive.lock().await = Instant::now();
                         if let Ok(bytes) = bytes.try_into() {
                             let bytes: [u8; 16] = bytes;
                             let timestamp = u128::from_be_bytes(bytes);
@@ -477,7 +502,7 @@ pub struct Socket {
 }
 
 impl Socket {
-    pub fn new<M, E: std::error::Error, S>(socket: S, config: Config) -> Self
+    pub fn new<M, E: std::error::Error, S>(socket: S, config: SocketConfig) -> Self
     where
         M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,
         E: Into<Error>,
@@ -503,7 +528,7 @@ impl Socket {
                         let _ = sink
                             .send_raw(InRawMessage::new(RawMessage::Close(Some(CloseFrame {
                                 code: CloseCode::Normal,
-                                reason: String::from("client didn't respond to Ping frame"),
+                                reason: String::from("client is inactive"),
                             }))))
                             .await;
                         return;
@@ -511,10 +536,8 @@ impl Socket {
                     let timestamp = SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or(Duration::default());
-                    let timestamp = timestamp.as_millis();
-                    let bytes = timestamp.to_be_bytes();
                     if sink
-                        .send_raw(InRawMessage::new(RawMessage::Ping(bytes.to_vec())))
+                        .send_raw(InRawMessage::new((config.heartbeat_ping_msg_fn)(timestamp)))
                         .await
                         .is_err()
                     {

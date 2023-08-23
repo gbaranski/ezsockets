@@ -31,7 +31,7 @@
 //! }
 //! ```
 
-use crate::socket::RawMessage;
+use crate::socket::{RawMessage, SocketConfig};
 use crate::tungstenite::tungstenite::handshake::server::ErrorResponse;
 use crate::CloseCode;
 use crate::CloseFrame;
@@ -139,7 +139,6 @@ cfg_if::cfg_if! {
         use crate::Server;
         use crate::Error;
         use crate::Socket;
-        use crate::socket;
         use crate::ServerExt;
 
         use tokio::net::TcpListener;
@@ -173,19 +172,19 @@ cfg_if::cfg_if! {
                 let socket = match self {
                     Acceptor::Plain => {
                         let socket = tokio_tungstenite::accept_hdr_async(stream, callback).await?;
-                        Socket::new(socket, socket::Config::default())
+                        Socket::new(socket, SocketConfig::default())
                     }
                     #[cfg(feature = "native-tls")]
                     Acceptor::NativeTls(acceptor) => {
                         let tls_stream = acceptor.accept(stream).await?;
                         let socket = tokio_tungstenite::accept_hdr_async(tls_stream, callback).await?;
-                        Socket::new(socket, socket::Config::default())
+                        Socket::new(socket, SocketConfig::default())
                     }
                     #[cfg(feature = "rustls")]
                     Acceptor::Rustls(acceptor) => {
                         let tls_stream = acceptor.accept(stream).await?;
                         let socket = tokio_tungstenite::accept_hdr_async(tls_stream, callback).await?;
-                        Socket::new(socket, socket::Config::default())
+                        Socket::new(socket, SocketConfig::default())
                     }
                 };
                 let Some(req_body) = req0 else { return Err("invalid request body".into()); };

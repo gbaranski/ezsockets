@@ -185,8 +185,9 @@ pub trait ServerExt: Send {
     type Call: Send;
 
     /// Called when client connects to the server.
+    ///
     /// Here you should create a `Session` with your own implementation of `SessionExt` and return it.
-    ///If you don't want to accept the connection, return an error.
+    /// If you don't want to accept the connection, return an error.
     async fn on_connect(
         &mut self,
         socket: Socket,
@@ -203,6 +204,7 @@ pub trait ServerExt: Send {
         reason: Result<Option<CloseFrame>, Error>,
     ) -> Result<(), Error>;
     /// Handler for custom calls from other parts from your program.
+    ///
     /// This is useful for concurrency and polymorphism.
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
 }

@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Return `Ok(MessageSignal)` from `Client` and `Session` `.binary()/.text()/.close()` endpoints instead of `Ok(())`. The `MessageSignal::state()` method will indicate the current state of the message (sending/sent/failed).
 - Clients attempt to reconnect immediately instead of after one full reconnect interval.
 - Incoming user messages are discarded while a client is reconnecting, to better match the usual behavior of a websocket connection. If you want messages to be buffered while reconnecting, you should implement your own buffer.
+- rename `socket::Config` -> `socket::SocketConfig` and add a `heartbeat_ping_msg_fn` member variable in order to support custom Ping/Pong protocols
+    - add `ClientConfig::socket_config()` setter so clients can define their socket's config
 
 
 Migration guide:

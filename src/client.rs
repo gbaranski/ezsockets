@@ -48,7 +48,7 @@
 //!
 //! ```
 
-use crate::socket::{Config, InMessage, MessageSignal};
+use crate::socket::{InMessage, MessageSignal, SocketConfig};
 use crate::CloseFrame;
 use crate::Error;
 use crate::Message;
@@ -63,7 +63,6 @@ use std::future::Future;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 use url::Url;
 
@@ -74,6 +73,7 @@ pub struct ClientConfig {
     url: Url,
     reconnect_interval: Duration,
     headers: http::HeaderMap,
+    socket_config: Option<SocketConfig>,
 }
 
 impl ClientConfig {
@@ -89,6 +89,7 @@ impl ClientConfig {
             url,
             reconnect_interval: DEFAULT_RECONNECT_INTERVAL,
             headers: http::HeaderMap::new(),
+            socket_config: None,
         }
     }
 
@@ -151,8 +152,15 @@ impl ClientConfig {
         self
     }
 
+    /// Set the reconnect interval.
     pub fn reconnect_interval(mut self, reconnect_interval: Duration) -> Self {
         self.reconnect_interval = reconnect_interval;
+        self
+    }
+
+    /// Set the socket's configuration.
+    pub fn socket_config(mut self, socket_config: SocketConfig) -> Self {
+        self.socket_config = Some(socket_config);
         self
     }
 
@@ -333,14 +341,13 @@ pub async fn connect<E: ClientExt + 'static>(
             tracing::error!("calling on_connect() failed due to {}", err);
             return Err(err);
         }
-        let socket = Socket::new(stream, Config::default());
+        let socket = Socket::new(stream, config.socket_config.clone().unwrap_or_default());
         tracing::info!("connected to {}", config.url);
         let mut actor = ClientActor {
             client,
             to_socket_receiver,
             client_call_receiver,
             socket,
-            heartbeat: Instant::now(),
             config,
         };
         actor.run().await?;
@@ -356,7 +363,6 @@ struct ClientActor<E: ClientExt> {
     client_call_receiver: mpsc::UnboundedReceiver<E::Call>,
     socket: Socket,
     config: ClientConfig,
-    heartbeat: Instant,
 }
 
 impl<E: ClientExt> ClientActor<E> {
@@ -386,7 +392,7 @@ impl<E: ClientExt> ClientActor<E> {
                                     tracing::trace!("client closed by server");
                                     match self.client.on_close(frame).await?
                                     {
-                                        ClientCloseMode::Reconnect => { if !self.try_reconnect().await { return Ok(()) } }
+                                        ClientCloseMode::Reconnect => self.reconnect().await?,
                                         ClientCloseMode::Close => return Ok(())
                                     }
                                 }
@@ -399,7 +405,7 @@ impl<E: ClientExt> ClientActor<E> {
                             tracing::trace!("client socket died");
                             match self.client.on_disconnect().await?
                             {
-                                ClientCloseMode::Reconnect => { if !self.try_reconnect().await { return Ok(()) } }
+                                ClientCloseMode::Reconnect => self.reconnect().await?,
                                 ClientCloseMode::Close => return Ok(())
                             }
                         }
@@ -412,7 +418,7 @@ impl<E: ClientExt> ClientActor<E> {
         Ok(())
     }
 
-    async fn try_reconnect(&mut self) -> bool {
+    async fn reconnect(&mut self) -> Result<(), Error> {
         for i in 1.. {
             tracing::info!("reconnecting attempt no: {}...", i);
             let connect_http_request = self.config.connect_http_request();
@@ -423,10 +429,11 @@ impl<E: ClientExt> ClientActor<E> {
                     if let Err(err) = self.client.on_connect().await {
                         tracing::error!("calling on_connect() failed due to {}", err);
                     }
-                    let socket = Socket::new(socket, Config::default());
-                    self.socket = socket;
-                    self.heartbeat = Instant::now();
-                    return true;
+                    self.socket = Socket::new(
+                        socket,
+                        self.config.socket_config.clone().unwrap_or_default(),
+                    );
+                    return Ok(());
                 }
                 Err(err) => {
                     tracing::warn!(
@@ -448,12 +455,12 @@ impl<E: ClientExt> ClientActor<E> {
                     },
                     else => {
                         tracing::warn!("client is dead, aborting reconnect");
-                        return false;
+                        return Err(Error::from("client died while trying to reconnect"));
                     },
                 }
             }
         }
 
-        false
+        Err(Error::from("client failed to reconnect"))
     }
 }
