@@ -144,6 +144,8 @@ impl ClientConfig {
 
     /// Insert query parameters into the connection request URI.
     /// Query parameters are supported by the websockets spec, so they will always be available to the connecting server.
+    /// Decode query parameters in `ServerExt::on_connect()` with
+    /// `form_urlencoded::parse(request.uri().query().unwrap().as_bytes())` using the `form_urlencoded` crate.
     pub fn query_parameter(mut self, key: &str, value: &str) -> Self {
         self.url.query_pairs_mut().append_pair(key, value);
         self
