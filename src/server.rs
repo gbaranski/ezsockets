@@ -103,7 +103,6 @@ struct NewConnection {
     socket: Socket,
     address: SocketAddr,
     request: Request,
-    respond_to: oneshot::Sender<()>,
 }
 
 struct Disconnected<E: ServerExt> {
@@ -129,7 +128,7 @@ where
         loop {
             if let Err(err) = async {
                 tokio::select! {
-                    Some(NewConnection{socket, address, respond_to, request}) = self.connection_receiver.recv() => {
+                    Some(NewConnection{socket, address, request}) = self.connection_receiver.recv() => {
                         let socket_sink = socket.sink.clone();
                         match self.extension.on_connect(socket, request, address).await {
                             Ok(session) => {
@@ -152,7 +151,6 @@ where
                                 }
                             }
                         }
-                        respond_to.send(()).unwrap_or_default();
                     }
                     Some(Disconnected{id, result}) = self.disconnection_receiver.recv() => {
                         match &result {
@@ -246,19 +244,20 @@ impl<E: ServerExt + 'static> Server<E> {
 }
 
 impl<E: ServerExt> Server<E> {
-    pub async fn accept(&self, socket: Socket, request: Request, address: SocketAddr) {
+    /// Accept a connection. Logs an error if the server actor is dead.
+    pub fn accept(&self, socket: Socket, request: Request, address: SocketAddr) {
         // TODO: can we refuse the connection here?
-        let (connection_indicator_sender, connection_indicator_receiver) = oneshot::channel();
-        self.connection_sender
+        if self
+            .connection_sender
             .send(NewConnection {
                 socket,
                 request,
                 address,
-                respond_to: connection_indicator_sender,
             })
-            .map_err(|_| "connections is down")
-            .unwrap_or_default();
-        connection_indicator_receiver.await.unwrap_or_default()
+            .is_err()
+        {
+            tracing::error!("accepted a connection but the server actor is dead");
+        }
     }
 
     pub(crate) fn disconnected(

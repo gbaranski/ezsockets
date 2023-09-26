@@ -163,7 +163,7 @@ impl Upgrade {
     pub fn on_upgrade<E: ServerExt + 'static>(self, server: Server<E>) -> Response {
         self.ws.on_upgrade(move |socket| async move {
             let socket = Socket::new(socket, Default::default()); // TODO: Make it really configurable via Extensions
-            server.accept(socket, self.request, self.address).await;
+            server.accept(socket, self.request, self.address);
         })
     }
 }
