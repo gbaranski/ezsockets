@@ -72,7 +72,7 @@ pub const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
 #[derive(Debug)]
 pub struct ClientConfig {
     url: Url,
-    reconnect_interval: Option<Duration>,
+    reconnect_interval: Duration,
     headers: http::HeaderMap,
 }
 
@@ -87,7 +87,7 @@ impl ClientConfig {
         let url = url.try_into().expect("invalid URL");
         Self {
             url,
-            reconnect_interval: Some(DEFAULT_RECONNECT_INTERVAL),
+            reconnect_interval: DEFAULT_RECONNECT_INTERVAL,
             headers: http::HeaderMap::new(),
         }
     }
@@ -152,7 +152,7 @@ impl ClientConfig {
     }
 
     pub fn reconnect_interval(mut self, reconnect_interval: Duration) -> Self {
-        self.reconnect_interval = Some(reconnect_interval);
+        self.reconnect_interval = reconnect_interval;
         self
     }
 
@@ -205,7 +205,7 @@ pub trait ClientExt: Send {
     ///
     /// By default, the client will try to reconnect. Return [`ClientCloseMode::Close`] here to fully close instead.
     ///
-    /// For reconnections, use `ClientConfig::reconnect_interval`(enabled by default).
+    /// For reconnections, use `ClientConfig::reconnect_interval`.
     async fn on_close(&mut self, _frame: Option<CloseFrame>) -> Result<ClientCloseMode, Error> {
         Ok(ClientCloseMode::Reconnect)
     }
@@ -214,7 +214,7 @@ pub trait ClientExt: Send {
     ///
     /// By default, the client will try to reconnect. Return [`ClientCloseMode::Close`] here to fully close instead.
     ///
-    /// For reconnections, use `ClientConfig::reconnect_interval`(enabled by default).
+    /// For reconnections, use `ClientConfig::reconnect_interval`.
     async fn on_disconnect(&mut self) -> Result<ClientCloseMode, Error> {
         Ok(ClientCloseMode::Reconnect)
     }
@@ -382,10 +382,6 @@ impl<E: ClientExt> ClientActor<E> {
     }
 
     async fn try_reconnect(&mut self) -> bool {
-        let Some(reconnect_interval) = self.config.reconnect_interval else {
-            tracing::warn!("no reconnect interval set, aborting reconnect attempt");
-            return false;
-        };
         for i in 1.. {
             tracing::info!("reconnecting attempt no: {}...", i);
             let connect_http_request = self.config.connect_http_request();
@@ -405,12 +401,12 @@ impl<E: ClientExt> ClientActor<E> {
                     tracing::warn!(
                         "reconnecting failed due to {}. will retry in {}s",
                         err,
-                        reconnect_interval.as_secs()
+                        self.config.reconnect_interval.as_secs()
                     );
                 }
             };
             // discard messages until either the reconnect interval passes or the socket receiver disconnects
-            let sleep = tokio::time::sleep(reconnect_interval);
+            let sleep = tokio::time::sleep(self.config.reconnect_interval);
             tokio::pin!(sleep);
             loop {
                 tokio::select! {
