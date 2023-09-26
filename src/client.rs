@@ -386,9 +386,7 @@ impl<E: ClientExt> ClientActor<E> {
             tracing::warn!("no reconnect interval set, aborting reconnect attempt");
             return false;
         };
-        tracing::info!("reconnecting in {}s", reconnect_interval.as_secs());
         for i in 1.. {
-            tokio::time::sleep(reconnect_interval).await;
             tracing::info!("reconnecting attempt no: {}...", i);
             let connect_http_request = self.config.connect_http_request();
             let result = tokio_tungstenite::connect_async(connect_http_request).await;
@@ -411,6 +409,22 @@ impl<E: ClientExt> ClientActor<E> {
                     );
                 }
             };
+            // discard messages until either the reconnect interval passes or the socket receiver disconnects
+            let sleep = tokio::time::sleep(reconnect_interval);
+            tokio::pin!(sleep);
+            loop {
+                tokio::select! {
+                    _ = &mut sleep => break,
+                    Some(_) = self.to_socket_receiver.recv() => {
+                        tracing::warn!("client is reconnecting, discarding message from user");
+                        continue
+                    },
+                    else => {
+                        tracing::warn!("client is dead, aborting reconnect");
+                        return false;
+                    },
+                }
+            }
         }
 
         false
