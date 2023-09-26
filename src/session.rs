@@ -131,8 +131,12 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        let Ok(_) = self.session_call_sender.send(call) else { return None; };
-        let Ok(result) = receiver.await else { return None; };
+        let Ok(_) = self.session_call_sender.send(call) else {
+            return None;
+        };
+        let Ok(result) = receiver.await else {
+            return None;
+        };
         Some(result)
     }
 

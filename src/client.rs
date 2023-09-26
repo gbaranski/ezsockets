@@ -267,8 +267,12 @@ impl<E: ClientExt> Client<E> {
         let (sender, receiver) = oneshot::channel();
         let call = f(sender);
 
-        let Ok(_) = self.client_call_sender.send(call) else { return None; };
-        let Ok(result) = receiver.await else { return None; };
+        let Ok(_) = self.client_call_sender.send(call) else {
+            return None;
+        };
+        let Ok(result) = receiver.await else {
+            return None;
+        };
         Some(result)
     }
 
