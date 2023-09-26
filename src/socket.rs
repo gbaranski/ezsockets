@@ -264,7 +264,7 @@ where
                             let timestamp = Duration::from_millis(timestamp as u64); // TODO: handle overflow
                             let latency = SystemTime::now()
                                 .duration_since(UNIX_EPOCH + timestamp)
-                                .unwrap();
+                                .unwrap_or(Duration::default());
                             // TODO: handle time zone
                             tracing::trace!("latency: {}ms", latency.as_millis());
                         }
@@ -358,7 +358,7 @@ impl Socket {
                     }
                     let timestamp = SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap();
+                        .unwrap_or(Duration::default());
                     let timestamp = timestamp.as_millis();
                     let bytes = timestamp.to_be_bytes();
                     if sink
@@ -373,7 +373,7 @@ impl Socket {
         });
 
         tokio::spawn(async move {
-            stream_future.await.unwrap();
+            stream_future.await.unwrap_or_default();
             sink_future.abort();
             heartbeat_future.abort();
         });
