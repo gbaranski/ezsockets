@@ -295,7 +295,7 @@ pub async fn connect<E: ClientExt + 'static>(
         tracing::info!("connecting to {}...", config.url);
         let (stream, _) = tokio_tungstenite::connect_async(http_request).await?;
         if let Err(err) = client.on_connect().await {
-            tracing::error!("calling `connected()` failed due to {}", err);
+            tracing::error!("calling on_connect() failed due to {}", err);
         }
         let socket = Socket::new(stream, Config::default());
         tracing::info!("connected to {}", config.url);
@@ -391,7 +391,7 @@ impl<E: ClientExt> ClientActor<E> {
                 Ok((socket, _)) => {
                     tracing::info!("successfully reconnected");
                     if let Err(err) = self.client.on_connect().await {
-                        tracing::error!("calling `connected()` failed due to {}", err);
+                        tracing::error!("calling on_connect() failed due to {}", err);
                     }
                     let socket = Socket::new(socket, Config::default());
                     self.socket = socket;

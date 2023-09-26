@@ -286,7 +286,7 @@ where
                 if closing {
                     tracing::trace!("stream is closed");
                 } else {
-                    tracing::warn!("failed to forward message. stream is disconnected");
+                    tracing::warn!("failed to forward message, stream is disconnected");
                 }
                 break;
             };
