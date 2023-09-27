@@ -48,7 +48,7 @@
 //!
 //! ```
 
-use crate::socket::Config;
+use crate::socket::{Config, InMessage, MessageSignal};
 use crate::CloseFrame;
 use crate::Error;
 use crate::Message;
@@ -222,7 +222,7 @@ pub trait ClientExt: Send {
 
 #[derive(Debug)]
 pub struct Client<E: ClientExt> {
-    to_socket_sender: mpsc::UnboundedSender<Message>,
+    to_socket_sender: mpsc::UnboundedSender<InMessage>,
     client_call_sender: mpsc::UnboundedSender<E::Call>,
 }
 
@@ -243,23 +243,43 @@ impl<E: ClientExt> From<Client<E>> for mpsc::UnboundedSender<E::Call> {
 
 impl<E: ClientExt> Client<E> {
     /// Send a text message to the server.
-    pub fn text(&self, text: String) -> Result<(), mpsc::error::SendError<Message>> {
-        self.to_socket_sender.send(Message::Text(text))
+    ///
+    /// Returns a `MessageSignal` which will report if sending succeeds/fails.
+    pub fn text(
+        &self,
+        text: impl Into<String>,
+    ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
+        let inmessage = InMessage::new(Message::Text(text.into()));
+        let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
+        self.to_socket_sender
+            .send(inmessage)
+            .map(|_| inmessage_signal)
     }
 
     /// Send a binary message to the server.
-    pub fn binary(&self, bytes: Vec<u8>) -> Result<(), mpsc::error::SendError<Message>> {
-        self.to_socket_sender.send(Message::Binary(bytes))
+    ///
+    /// Returns a `MessageSignal` which will report if sending succeeds/fails.
+    pub fn binary(
+        &self,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
+        let inmessage = InMessage::new(Message::Binary(bytes.into()));
+        let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
+        self.to_socket_sender
+            .send(inmessage)
+            .map(|_| inmessage_signal)
     }
 
     /// Call a custom method on the Client.
+    ///
     /// Refer to `ClientExt::on_call`.
     pub fn call(&self, message: E::Call) -> Result<(), mpsc::error::SendError<E::Call>> {
         self.client_call_sender.send(message)
     }
 
     /// Call a custom method on the Client, with a reply from the `ClientExt::on_call`.
-    /// This works just as a syntactic sugar for `Client::call(sender)`
+    ///
+    /// This works just as syntactic sugar for `Client::call(sender)`
     pub async fn call_with<R: fmt::Debug>(
         &self,
         f: impl FnOnce(oneshot::Sender<R>) -> E::Call,
@@ -277,9 +297,20 @@ impl<E: ClientExt> Client<E> {
     }
 
     /// Disconnect client from the server. Returns an error if the client is already closed.
+    ///
     /// Optionally pass a frame with reason and code.
-    pub fn close(&self, frame: Option<CloseFrame>) -> Result<(), mpsc::error::SendError<Message>> {
-        self.to_socket_sender.send(Message::Close(frame))
+    ///
+    /// Returns a `MessageSignal` which will report if sending the close frame to the server succeeds/fails. If
+    /// it fails, then the connection was already closed.
+    pub fn close(
+        &self,
+        frame: Option<CloseFrame>,
+    ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
+        let inmessage = InMessage::new(Message::Close(frame));
+        let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
+        self.to_socket_sender
+            .send(inmessage)
+            .map(|_| inmessage_signal)
     }
 }
 
@@ -321,7 +352,7 @@ pub async fn connect<E: ClientExt + 'static>(
 
 struct ClientActor<E: ClientExt> {
     client: E,
-    to_socket_receiver: mpsc::UnboundedReceiver<Message>,
+    to_socket_receiver: mpsc::UnboundedReceiver<InMessage>,
     client_call_receiver: mpsc::UnboundedReceiver<E::Call>,
     socket: Socket,
     config: ClientConfig,
@@ -332,9 +363,9 @@ impl<E: ClientExt> ClientActor<E> {
     async fn run(&mut self) -> Result<(), Error> {
         loop {
             tokio::select! {
-                Some(message) = self.to_socket_receiver.recv() => {
-                    let mut closed_self = matches!(message, Message::Close(_));
-                    if self.socket.send(message).await.is_err() {
+                Some(inmessage) = self.to_socket_receiver.recv() => {
+                    let mut closed_self = matches!(inmessage.message, Some(Message::Close(_)));
+                    if self.socket.send(inmessage).await.is_err() {
                         closed_self = true;
                     }
                     if closed_self {

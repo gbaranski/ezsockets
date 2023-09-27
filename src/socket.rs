@@ -1,5 +1,6 @@
 use crate::Error;
 use futures::{SinkExt, StreamExt, TryStreamExt};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use std::{
@@ -7,6 +8,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
@@ -167,13 +169,133 @@ impl From<Message> for RawMessage {
     }
 }
 
+/// Possible states of a submitted message.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum MessageStatus {
+    /// Message is in the process of being sent.
+    Sending,
+    /// Message was successfully sent.
+    Sent,
+    /// Message failed sending.
+    Failed,
+}
+
+/// Signal that listens to the current `MessageStatus` of a submitted message.
+#[derive(Debug, Clone)]
+pub struct MessageSignal {
+    signal: Arc<AtomicU8>,
+}
+
+impl MessageSignal {
+    pub fn status(&self) -> MessageStatus {
+        match self.signal.load(Ordering::Acquire) {
+            0u8 => MessageStatus::Sending,
+            1u8 => MessageStatus::Sent,
+            _ => MessageStatus::Failed,
+        }
+    }
+
+    pub(crate) fn set(&self, state: MessageStatus) {
+        match state {
+            MessageStatus::Sending => self.signal.store(0u8, Ordering::Release),
+            MessageStatus::Sent => self.signal.store(1u8, Ordering::Release),
+            MessageStatus::Failed => self.signal.store(2u8, Ordering::Release),
+        }
+    }
+}
+
+impl Default for MessageSignal {
+    fn default() -> Self {
+        Self {
+            signal: Arc::new(AtomicU8::new(0u8)),
+        }
+    }
+}
+
+/// Raw message with associated message signal.
+#[derive(Debug, Clone)]
+pub struct InRawMessage {
+    /// We use an `Option` for the message so that we can both extract messages for sending and implement `Drop`.
+    message: Option<RawMessage>,
+    signal: Option<MessageSignal>,
+}
+
+impl InRawMessage {
+    pub fn new(message: RawMessage) -> Self {
+        Self {
+            message: Some(message),
+            signal: Some(MessageSignal::default()),
+        }
+    }
+
+    pub(crate) fn take_message(&mut self) -> Option<RawMessage> {
+        self.message.take()
+    }
+
+    pub(crate) fn set_signal(&mut self, state: MessageStatus) {
+        let Some(signal) = &self.signal else {
+            return;
+        };
+        signal.set(state);
+        self.signal = None;
+    }
+}
+
+impl Drop for InRawMessage {
+    fn drop(&mut self) {
+        // If the signal is still present in the message when dropping, then we need to mark its state as failed.
+        self.set_signal(MessageStatus::Failed);
+    }
+}
+
+/// Message with associated message signal.
+#[derive(Debug, Clone)]
+pub struct InMessage {
+    /// We use an `Option` for the message so that we can both convert to `InMessage`s and implement `Drop`.
+    pub(crate) message: Option<Message>,
+    signal: Option<MessageSignal>,
+}
+
+impl InMessage {
+    pub fn new(message: Message) -> Self {
+        Self {
+            message: Some(message),
+            signal: Some(MessageSignal::default()),
+        }
+    }
+
+    pub fn clone_signal(&self) -> Option<MessageSignal> {
+        self.signal.clone()
+    }
+}
+
+impl From<InMessage> for InRawMessage {
+    fn from(mut inmessage: InMessage) -> Self {
+        Self {
+            message: inmessage.message.take().map(|msg| msg.into()),
+            signal: inmessage.signal.take(),
+        }
+    }
+}
+
+impl Drop for InMessage {
+    fn drop(&mut self) {
+        // If the signal is still present in the message when dropping, then we need to mark its state as failed.
+        let Some(signal) = self.signal.take() else {
+            return;
+        };
+        signal.set(MessageStatus::Failed);
+    }
+}
+
 #[derive(Debug)]
 struct SinkActor<M, S>
 where
     M: From<RawMessage>,
     S: SinkExt<M, Error = Error> + Unpin,
 {
-    receiver: mpsc::UnboundedReceiver<RawMessage>,
+    receiver: mpsc::UnboundedReceiver<InRawMessage>,
+    abort_receiver: oneshot::Receiver<()>,
     sink: S,
     phantom: PhantomData<M>,
 }
@@ -184,9 +306,29 @@ where
     S: SinkExt<M, Error = Error> + Unpin,
 {
     async fn run(&mut self) -> Result<(), Error> {
-        while let Some(message) = self.receiver.recv().await {
-            tracing::trace!("sending message: {:?}", message);
-            self.sink.send(M::from(message)).await?;
+        loop {
+            tokio::select! {
+                Some(mut inmessage) = self.receiver.recv() => {
+                    let Some(message) = inmessage.take_message() else {
+                        continue;
+                    };
+                    tracing::trace!("sending message: {:?}", message);
+                    match self.sink.send(M::from(message)).await {
+                        Ok(()) => inmessage.set_signal(MessageStatus::Sent),
+                        Err(err) => {
+                            inmessage.set_signal(MessageStatus::Failed);
+                            tracing::warn!(?err, "sink send failed");
+                            return Err(err);
+                        }
+                    }
+                },
+                Ok(()) = &mut self.abort_receiver => {
+                    break;
+                },
+                else => {
+                    break;
+                }
+            }
         }
         Ok(())
     }
@@ -194,11 +336,14 @@ where
 
 #[derive(Debug, Clone)]
 pub struct Sink {
-    sender: mpsc::UnboundedSender<RawMessage>,
+    sender: mpsc::UnboundedSender<InRawMessage>,
 }
 
 impl Sink {
-    fn new<M, S>(sink: S) -> (tokio::task::JoinHandle<Result<(), Error>>, Self)
+    fn new<M, S>(
+        sink: S,
+        abort_receiver: oneshot::Receiver<()>,
+    ) -> (tokio::task::JoinHandle<Result<(), Error>>, Self)
     where
         M: From<RawMessage> + Send + 'static,
         S: SinkExt<M, Error = Error> + Unpin + Send + 'static,
@@ -206,6 +351,7 @@ impl Sink {
         let (sender, receiver) = mpsc::unbounded_channel();
         let mut actor = SinkActor {
             receiver,
+            abort_receiver,
             sink,
             phantom: Default::default(),
         };
@@ -217,15 +363,18 @@ impl Sink {
         self.sender.is_closed()
     }
 
-    pub async fn send(&self, message: Message) -> Result<(), mpsc::error::SendError<RawMessage>> {
-        self.sender.send(message.into())
+    pub async fn send(
+        &self,
+        inmessage: InMessage,
+    ) -> Result<(), mpsc::error::SendError<InRawMessage>> {
+        self.sender.send(inmessage.into())
     }
 
     pub(crate) async fn send_raw(
         &self,
-        message: RawMessage,
-    ) -> Result<(), mpsc::error::SendError<RawMessage>> {
-        self.sender.send(message)
+        inmessage: InRawMessage,
+    ) -> Result<(), mpsc::error::SendError<InRawMessage>> {
+        self.sender.send(inmessage)
     }
 }
 
@@ -337,8 +486,11 @@ impl Socket {
         let last_alive = Instant::now();
         let last_alive = Arc::new(Mutex::new(last_alive));
         let (sink, stream) = socket.sink_err_into().err_into().split();
-        let ((sink_future, sink), (stream_future, stream)) =
-            (Sink::new(sink), Stream::new(stream, last_alive.clone()));
+        let (sink_abort_sender, sink_abort_receiver) = oneshot::channel();
+        let ((sink_future, sink), (stream_future, stream)) = (
+            Sink::new(sink, sink_abort_receiver),
+            Stream::new(stream, last_alive.clone()),
+        );
         let heartbeat_future = tokio::spawn({
             let sink = sink.clone();
             async move {
@@ -349,10 +501,10 @@ impl Socket {
                     if last_alive.lock().await.elapsed() > config.timeout {
                         tracing::info!("closing connection due to timeout");
                         let _ = sink
-                            .send_raw(RawMessage::Close(Some(CloseFrame {
+                            .send_raw(InRawMessage::new(RawMessage::Close(Some(CloseFrame {
                                 code: CloseCode::Normal,
                                 reason: String::from("client didn't respond to Ping frame"),
-                            })))
+                            }))))
                             .await;
                         return;
                     }
@@ -362,7 +514,7 @@ impl Socket {
                     let timestamp = timestamp.as_millis();
                     let bytes = timestamp.to_be_bytes();
                     if sink
-                        .send_raw(RawMessage::Ping(bytes.to_vec()))
+                        .send_raw(InRawMessage::new(RawMessage::Ping(bytes.to_vec())))
                         .await
                         .is_err()
                     {
@@ -373,22 +525,26 @@ impl Socket {
         });
 
         tokio::spawn(async move {
-            stream_future.await.unwrap_or_default();
-            sink_future.abort();
+            let _ = stream_future.await;
+            let _ = sink_abort_sender.send(());
             heartbeat_future.abort();
+            let _ = sink_future.await; //todo: send result to socket
         });
 
         Self { sink, stream }
     }
 
-    pub async fn send(&self, message: Message) -> Result<(), mpsc::error::SendError<RawMessage>> {
+    pub async fn send(
+        &self,
+        message: InMessage,
+    ) -> Result<(), mpsc::error::SendError<InRawMessage>> {
         self.sink.send(message).await
     }
 
     pub async fn send_raw(
         &self,
-        message: RawMessage,
-    ) -> Result<(), mpsc::error::SendError<RawMessage>> {
+        message: InRawMessage,
+    ) -> Result<(), mpsc::error::SendError<InRawMessage>> {
         self.sink.send_raw(message).await
     }
 

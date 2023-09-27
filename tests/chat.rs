@@ -248,7 +248,9 @@ impl ezsockets::ClientExt for ChatClient {
 
     async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
         match call {
-            ChatClientMessage::Send(message) => self.handle.text(message).unwrap(),
+            ChatClientMessage::Send(message) => {
+                let _ = self.handle.text(message).unwrap();
+            }
             ChatClientMessage::Subscribe(respond_to) => {
                 respond_to.send(self.messages.subscribe()).unwrap()
             }
