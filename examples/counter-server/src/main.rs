@@ -104,10 +104,12 @@ impl ezsockets::SessionExt for CounterSession {
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
         match call {
             Message::Increment => self.counter += 1,
-            Message::Share => self
-                .handle
-                .text(format!("counter: {}", self.counter))
-                .unwrap(),
+            Message::Share => {
+                let _ = self
+                    .handle
+                    .text(format!("counter: {}", self.counter))
+                    .unwrap();
+            }
         };
         Ok(())
     }

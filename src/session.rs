@@ -1,6 +1,7 @@
 use std::fmt::Formatter;
 use std::sync::Arc;
 
+use crate::socket::{InMessage, MessageSignal};
 use crate::CloseFrame;
 use crate::Error;
 use crate::Message;
@@ -32,7 +33,7 @@ type CloseReceiver = oneshot::Receiver<Result<Option<CloseFrame>, Error>>;
 
 pub struct Session<I, C> {
     pub id: I,
-    to_socket_sender: mpsc::UnboundedSender<Message>,
+    to_socket_sender: mpsc::UnboundedSender<InMessage>,
     session_call_sender: mpsc::UnboundedSender<C>,
     closed_indicator: Arc<Mutex<Option<CloseReceiver>>>,
 }
@@ -110,13 +111,27 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     }
 
     /// Sends a Text message to the server
-    pub fn text(&self, text: impl Into<String>) -> Result<(), mpsc::error::SendError<Message>> {
-        self.to_socket_sender.send(Message::Text(text.into()))
+    pub fn text(
+        &self,
+        text: impl Into<String>,
+    ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
+        let inmessage = InMessage::new(Message::Text(text.into()));
+        let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
+        self.to_socket_sender
+            .send(inmessage)
+            .map(|_| inmessage_signal)
     }
 
     /// Sends a Binary message to the server
-    pub fn binary(&self, bytes: impl Into<Vec<u8>>) -> Result<(), mpsc::error::SendError<Message>> {
-        self.to_socket_sender.send(Message::Binary(bytes.into()))
+    pub fn binary(
+        &self,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
+        let inmessage = InMessage::new(Message::Binary(bytes.into()));
+        let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
+        self.to_socket_sender
+            .send(inmessage)
+            .map(|_| inmessage_signal)
     }
 
     /// Calls a method on the session
@@ -146,15 +161,19 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     pub async fn close(
         &self,
         frame: Option<CloseFrame>,
-    ) -> Result<(), mpsc::error::SendError<Message>> {
-        self.to_socket_sender.send(Message::Close(frame))
+    ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
+        let inmessage = InMessage::new(Message::Close(frame));
+        let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
+        self.to_socket_sender
+            .send(inmessage)
+            .map(|_| inmessage_signal)
     }
 }
 
 pub(crate) struct SessionActor<E: SessionExt> {
     pub extension: E,
     id: E::ID,
-    to_socket_receiver: mpsc::UnboundedReceiver<Message>,
+    to_socket_receiver: mpsc::UnboundedReceiver<InMessage>,
     session_call_receiver: mpsc::UnboundedReceiver<E::Call>,
     socket: Socket,
 }
@@ -163,7 +182,7 @@ impl<E: SessionExt> SessionActor<E> {
     pub(crate) fn new(
         extension: E,
         id: E::ID,
-        to_socket_receiver: mpsc::UnboundedReceiver<Message>,
+        to_socket_receiver: mpsc::UnboundedReceiver<InMessage>,
         session_call_receiver: mpsc::UnboundedReceiver<E::Call>,
         socket: Socket,
     ) -> Self {
@@ -180,11 +199,15 @@ impl<E: SessionExt> SessionActor<E> {
         loop {
             tokio::select! {
                 biased;
-                Some(mut message) = self.to_socket_receiver.recv() => {
-                    if self.socket.send(message.clone()).await.is_err() {
-                        message = Message::Close(None);
+                Some(inmessage) = self.to_socket_receiver.recv() => {
+                    let mut close_frame = match &inmessage.message {
+                        Some(Message::Close(frame)) => Some(frame.clone()),
+                        _ => None,
+                    };
+                    if self.socket.send(inmessage).await.is_err() && close_frame.is_none() {
+                        close_frame = Some(None);
                     }
-                    if let Message::Close(frame) = message {
+                    if let Some(frame) = close_frame {
                         // session closed itself
                         return Ok(frame)
                     }

@@ -86,6 +86,7 @@
 //! - [tungstenite](crate::tungstenite) - the simplest option based on [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite)
 //! - [axum](crate::axum) - based on [`axum`](https://crates.io/crates/axum), a web framework for Rust
 
+use crate::socket::InMessage;
 use crate::CloseFrame;
 use crate::Error;
 use crate::Message;
@@ -146,7 +147,7 @@ where
                             Err(err) => {
                                 // our extension rejected the connection, so forward the close frame to the client
                                 tracing::info!(?err, "connection from {address} rejected");
-                                if let Err(err) = socket_sink.send(Message::Close(err)).await {
+                                if let Err(err) = socket_sink.send(InMessage::new(Message::Close(err))).await {
                                     tracing::warn!(?err, "failed forwarding close frame to socket after connection rejected");
                                 }
                             }
