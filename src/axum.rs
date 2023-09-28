@@ -89,6 +89,16 @@ pub struct Upgrade {
     request: crate::Request,
 }
 
+impl Upgrade {
+    pub fn address(&self) -> &SocketAddr {
+        &self.address
+    }
+
+    pub fn request(&self) -> &crate::Request {
+        &self.request
+    }
+}
+
 #[async_trait]
 impl<S, B> FromRequest<S, B> for Upgrade
 where
