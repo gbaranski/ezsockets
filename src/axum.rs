@@ -1,7 +1,6 @@
 //! `axum` feature must be enabled in order to use this module.
 //!
 //! ```no_run
-//! # use axum_crate as axum;
 //! use async_trait::async_trait;
 //! use axum::routing::get;
 //! use axum::Extension;
@@ -58,8 +57,6 @@
 //!     ezsocket.on_upgrade(server)
 //! }
 //! ```
-
-use axum_crate as axum;
 
 use crate::CloseCode;
 use crate::CloseFrame;

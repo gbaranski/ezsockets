@@ -23,7 +23,7 @@ tracing = "0.1.31"
 url = "2.2.2"
 cfg-if = "1.0.0"
 
-axum_crate = { package = "axum", version = "0.6.1", features = ["ws"], optional = true }
+axum = { version = "0.6.1", features = ["ws"], optional = true }
 tokio-tungstenite = { version = "0.18.0", optional = true }
 tokio-rustls = { version = "0.23.4", optional = true }
 tokio-native-tls = { version = "0.3.1", optional = true }
@@ -35,7 +35,7 @@ client = ["tokio-tungstenite"]
 
 server = []
 tungstenite = ["server", "tokio-tungstenite"]
-axum = ["server", "axum_crate"]
+axum = ["server", "dep:axum"]
 
 tls = []
 native-tls = ["tls", "tokio-native-tls", "tokio-tungstenite/native-tls"]

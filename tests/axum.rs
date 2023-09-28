@@ -4,8 +4,6 @@ mod client;
 use chat::ChatClient;
 use chat::ChatServer;
 
-use axum_crate as axum;
-
 use axum::extract::Extension;
 use axum::response::IntoResponse;
 use axum::routing::get;
