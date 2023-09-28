@@ -94,7 +94,8 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     #[doc(hidden)]
     /// WARN: Use only if really nessesary.
     ///
-    /// this uses some hack, which takes ownership of underlying `oneshot::Receiver`, making it inaccessible for all future calls of this method.
+    /// This uses some hack, which takes ownership of underlying `oneshot::Receiver`, making it inaccessible
+    /// for all future calls of this method.
     pub(super) async fn await_close(&self) -> Result<Option<CloseFrame>, Error> {
         let mut closed_indicator = self.closed_indicator.lock().await;
         let closed_indicator = closed_indicator
