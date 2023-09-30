@@ -71,6 +71,8 @@ pub const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
 #[derive(Debug)]
 pub struct ClientConfig {
     url: Url,
+    max_initial_connect_attempts: usize,
+    max_reconnect_attempts: usize,
     reconnect_interval: Duration,
     headers: http::HeaderMap,
     socket_config: Option<SocketConfig>,
@@ -87,6 +89,8 @@ impl ClientConfig {
         let url = url.try_into().expect("invalid URL");
         Self {
             url,
+            max_initial_connect_attempts: usize::MAX,
+            max_reconnect_attempts: usize::MAX,
             reconnect_interval: DEFAULT_RECONNECT_INTERVAL,
             headers: http::HeaderMap::new(),
             socket_config: None,
@@ -149,6 +153,22 @@ impl ClientConfig {
     /// `form_urlencoded::parse(request.uri().query().unwrap().as_bytes())` using the `form_urlencoded` crate.
     pub fn query_parameter(mut self, key: &str, value: &str) -> Self {
         self.url.query_pairs_mut().append_pair(key, value);
+        self
+    }
+
+    /// Set the maximum number of connection attempts when starting a client.
+    ///
+    /// Defaults to infinite.
+    pub fn max_initial_connect_attempts(mut self, max_initial_connect_attempts: usize) -> Self {
+        self.max_initial_connect_attempts = max_initial_connect_attempts;
+        self
+    }
+
+    /// Set the maximum number of attempts when reconnecting.
+    ///
+    /// Defaults to infinite.
+    pub fn max_reconnect_attempts(mut self, max_reconnect_attempts: usize) -> Self {
+        self.max_reconnect_attempts = max_reconnect_attempts;
         self
     }
 
@@ -335,8 +355,13 @@ pub async fn connect<E: ClientExt + 'static>(
     let mut client = client_fn(handle.clone());
     let future = tokio::spawn(async move {
         tracing::info!("connecting to {}...", config.url);
-        let Some(socket) =
-            client_connect(1usize, &config, &mut to_socket_receiver, &mut client).await?
+        let Some(socket) = client_connect(
+            config.max_initial_connect_attempts,
+            &config,
+            &mut to_socket_receiver,
+            &mut client,
+        )
+        .await?
         else {
             return Ok(());
         };
@@ -393,7 +418,7 @@ impl<E: ClientExt> ClientActor<E> {
                                     {
                                         ClientCloseMode::Reconnect => {
                                             let Some(socket) = client_connect(
-                                                usize::MAX,
+                                                self.config.max_reconnect_attempts,
                                                 &self.config,
                                                 &mut self.to_socket_receiver,
                                                 &mut self.client,
@@ -416,7 +441,7 @@ impl<E: ClientExt> ClientActor<E> {
                             {
                                 ClientCloseMode::Reconnect => {
                                     let Some(socket) = client_connect(
-                                        usize::MAX,
+                                        self.config.max_reconnect_attempts,
                                         &self.config,
                                         &mut self.to_socket_receiver,
                                         &mut self.client,
@@ -454,7 +479,8 @@ async fn client_connect<E: ClientExt>(
             Ok((socket, _)) => {
                 tracing::info!("successfully connected");
                 if let Err(err) = client.on_connect().await {
-                    tracing::error!("calling on_connect() failed due to {}", err);
+                    tracing::error!("calling on_connect() failed due to {}, closing client", err);
+                    return Err(err);
                 }
                 let socket = Socket::new(socket, config.socket_config.clone().unwrap_or_default());
                 return Ok(Some(socket));
@@ -468,7 +494,7 @@ async fn client_connect<E: ClientExt>(
             }
         };
 
-        // abort if we have exceeded the max attempts
+        // abort if we have reached the max attempts
         if i >= max_attempts {
             return Err(Error::from(format!(
                 "failed to connect after {} attempt(s), aborting...",
