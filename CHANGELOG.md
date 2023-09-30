@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Incoming user messages are discarded while a client is reconnecting, to better match the usual behavior of a websocket connection. If you want messages to be buffered while reconnecting, you should implement your own buffer.
 - rename `socket::Config` -> `socket::SocketConfig` and add a `heartbeat_ping_msg_fn` member variable in order to support custom Ping/Pong protocols
     - add `ClientConfig::socket_config()` setter so clients can define their socket's config
+    - update `ezsockets::axum::Upgrade::on_upgrade()` to accept a `SocketConfig`
 
 
 Migration guide:
@@ -65,7 +66,7 @@ async fn websocket_handler(
     // before:
         ezsocket.on_upgrade(server, session_args) // <----- 5. Remove `session_args` argument
     // after:
-        ezsocket.on_upgrade(server)               // <----- Now you can customize the `Session` inside of `ServerExt::on_connect` via `ezsockets::Request`
+        ezsocket.on_upgrade(server, SocketConfig::default()) // <----- Now you can customize the `Session` inside of `ServerExt::on_connect` via `ezsockets::Request`, and define the socket config here.
 }
 
 // ONLY for `tungstenite`

@@ -11,6 +11,7 @@ use axum::Router;
 use ezsockets::axum::Upgrade;
 use ezsockets::Server;
 use ezsockets::ServerExt;
+use ezsockets::SocketConfig;
 use std::net::SocketAddr;
 
 async fn websocket_handler<E>(
@@ -20,7 +21,7 @@ async fn websocket_handler<E>(
 where
     E: ServerExt + 'static,
 {
-    ezsocket.on_upgrade(server)
+    ezsocket.on_upgrade(server, SocketConfig::default())
 }
 
 async fn run<E>(create_fn: impl FnOnce(Server<E>) -> E) -> (Server<E>, SocketAddr)
