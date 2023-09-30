@@ -8,6 +8,7 @@ use ezsockets::axum::Upgrade;
 use ezsockets::CloseFrame;
 use ezsockets::Error;
 use ezsockets::Server;
+use ezsockets::SocketConfig;
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::net::SocketAddr;
@@ -156,5 +157,5 @@ async fn websocket_handler(
         )
             .into_response();
     }
-    ezsocket.on_upgrade(server)
+    ezsocket.on_upgrade(server, SocketConfig::default())
 }
