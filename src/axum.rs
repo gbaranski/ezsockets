@@ -54,7 +54,7 @@
 //!     Extension(server): Extension<ezsockets::Server<EchoServer>>,
 //!     ezsocket: Upgrade,
 //! ) -> impl IntoResponse {
-//!     ezsocket.on_upgrade(server, ezsockets::SocketConfig::default())
+//!     ezsocket.on_upgrade(server)
 //! }
 //! ```
 
@@ -170,7 +170,17 @@ impl Upgrade {
     /// When using `WebSocketUpgrade`, the response produced by this method
     /// should be returned from the handler. See the [module docs](self) for an
     /// example.
-    pub fn on_upgrade<E: ServerExt + 'static>(
+    pub fn on_upgrade<E: ServerExt + 'static>(self, server: Server<E>) -> Response {
+        self.on_upgrade_with_config(server, SocketConfig::default())
+    }
+
+    /// Finalize upgrading the connection and call the provided callback with
+    /// the stream.
+    ///
+    /// When using `WebSocketUpgrade`, the response produced by this method
+    /// should be returned from the handler. See the [module docs](self) for an
+    /// example.
+    pub fn on_upgrade_with_config<E: ServerExt + 'static>(
         self,
         server: Server<E>,
         socket_config: SocketConfig,
