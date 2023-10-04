@@ -56,6 +56,7 @@ use crate::Request;
 use crate::Socket;
 use async_trait::async_trait;
 use base64::Engine;
+use enfync::TryAdopt;
 use http::header::HeaderName;
 use http::HeaderValue;
 use std::fmt;
@@ -343,10 +344,26 @@ impl<E: ClientExt> Client<E> {
     }
 }
 
+/// Connect to a websocket server using the default client connector.
+/// - Requires a tokio runtime.
 pub async fn connect<E: ClientExt + 'static>(
     client_fn: impl FnOnce(Client<E>) -> E,
     config: ClientConfig,
 ) -> (Client<E>, impl Future<Output = Result<(), Error>>) {
+    let client_connector = enfync::builtin::native::TokioHandle::try_adopt()
+        .expect("ezsockets::client::connect() only works with tokio runtimes; use connect_with() instead");
+    let (handle, mut future) = connect_with(client_fn, config, client_connector);
+    let future = async move { future.extract().await.unwrap_or(Err("client actor crashed".into())) };
+    (handle, future)
+}
+
+/// Connect to a websocket server with the provided client connector.
+/// - TODO: add ClientConnector trait (currently uses default client connector: tokio-tungstenite in tokio runtime)
+pub fn connect_with<E: ClientExt + 'static>(
+    client_fn: impl FnOnce(Client<E>) -> E,
+    config: ClientConfig,
+    client_connector: impl enfync::Handle + Send + Sync + 'static,
+) -> (Client<E>, enfync::PendingResult<Result<(), Error>>) {
     let (to_socket_sender, mut to_socket_receiver) = mpsc::unbounded_channel();
     let (client_call_sender, client_call_receiver) = mpsc::unbounded_channel();
     let handle = Client {
@@ -354,11 +371,13 @@ pub async fn connect<E: ClientExt + 'static>(
         client_call_sender,
     };
     let mut client = client_fn(handle.clone());
-    let future = tokio::spawn(async move {
+    let client_connector_clone = client_connector.clone();
+    let future = client_connector.spawn(async move {
         tracing::info!("connecting to {}...", config.url);
         let Some(socket) = client_connect(
             config.max_initial_connect_attempts,
             &config,
+            client_connector_clone.clone(),
             &mut to_socket_receiver,
             &mut client,
         )
@@ -374,30 +393,35 @@ pub async fn connect<E: ClientExt + 'static>(
             client_call_receiver,
             socket,
             config,
+            client_connector: client_connector_clone,
         };
         actor.run().await?;
         Ok(())
     });
-    let future = async move { future.await.unwrap_or(Err("client actor crashed".into())) };
     (handle, future)
 }
 
-struct ClientActor<E: ClientExt> {
+struct ClientActor<E: ClientExt, C: enfync::Handle> {
     client: E,
     to_socket_receiver: mpsc::UnboundedReceiver<InMessage>,
     client_call_receiver: mpsc::UnboundedReceiver<E::Call>,
     socket: Socket,
     config: ClientConfig,
+    client_connector: C,
 }
 
-impl<E: ClientExt> ClientActor<E> {
+impl<E: ClientExt, C: enfync::Handle> ClientActor<E, C> {
     async fn run(&mut self) -> Result<(), Error> {
         loop {
             tokio::select! {
                 Some(inmessage) = self.to_socket_receiver.recv() => {
                     let closed_self = matches!(inmessage.message, Some(Message::Close(_)));
                     if self.socket.send(inmessage).await.is_err() {
-                        match self.socket.await_sink_close().await {
+                        let result = self.socket.await_sink_close().await;
+                        if let Err(err) = &result {
+                            tracing::warn!(?err, "encountered sink closing error when trying to send a message");
+                        }
+                        match result {
                             Err(WSError::ConnectionClosed) |
                             Err(WSError::AlreadyClosed) |
                             Err(WSError::Io(_)) |
@@ -436,6 +460,7 @@ impl<E: ClientExt> ClientActor<E> {
                                             let Some(socket) = client_connect(
                                                 self.config.max_reconnect_attempts,
                                                 &self.config,
+                                                self.client_connector.clone(),
                                                 &mut self.to_socket_receiver,
                                                 &mut self.client,
                                             ).await? else {
@@ -460,6 +485,7 @@ impl<E: ClientExt> ClientActor<E> {
                                     let Some(socket) = client_connect(
                                         self.config.max_reconnect_attempts,
                                         &self.config,
+                                        self.client_connector.clone(),
                                         &mut self.to_socket_receiver,
                                         &mut self.client,
                                     ).await? else {
@@ -484,6 +510,7 @@ impl<E: ClientExt> ClientActor<E> {
 async fn client_connect<E: ClientExt>(
     max_attempts: usize,
     config: &ClientConfig,
+    client_connector: impl enfync::Handle,
     to_socket_receiver: &mut mpsc::UnboundedReceiver<InMessage>,
     client: &mut E,
 ) -> Result<Option<Socket>, Error> {
@@ -491,15 +518,19 @@ async fn client_connect<E: ClientExt>(
         // connection attempt
         tracing::info!("connecting attempt no: {}...", i);
         let connect_http_request = config.connect_http_request();
-        let result = tokio_tungstenite::connect_async(connect_http_request).await;
+        let result = tokio_tungstenite::connect_async(connect_http_request).await; //todo: ClientConnector::connect()
         match result {
-            Ok((socket, _)) => {
+            Ok((socket_impl, _)) => {
                 tracing::info!("successfully connected");
                 if let Err(err) = client.on_connect().await {
                     tracing::error!("calling on_connect() failed due to {}, closing client", err);
                     return Err(err);
                 }
-                let socket = Socket::new(socket, config.socket_config.clone().unwrap_or_default());
+                let socket = Socket::new(
+                    socket_impl,
+                    config.socket_config.clone().unwrap_or_default(),
+                    client_connector,
+                );
                 return Ok(Some(socket));
             }
             Err(err) => {

@@ -16,6 +16,7 @@ categories = ["asynchronous", "network-programming", "web-programming::websocket
 async-trait = "0.1.52"
 atomic_enum = "0.2.0"
 base64 = "0.21.0"
+enfync = { git = "https://github.com/UkoeHB/enfync", rev = "010e30f" }
 futures = "0.3.21"
 http = "0.2.8"
 tokio = { version = "1.17.0", features = ["sync", "rt", "macros", "time"] }
@@ -50,8 +51,8 @@ tungstenite = ["server"]
 axum = ["server", "dep:axum", "axum-core", "bytes", "futures-util", "http-body", "hyper", "sha-1"]
 
 tls = ["server"]
-native-tls = ["tls", "tokio-native-tls", "tokio-tungstenite/native-tls", "tokio-tungstenite-wasm/native-tls"]
-rustls = ["tls", "tokio-rustls", "tokio-tungstenite/rustls-tls-webpki-roots", "tokio-tungstenite-wasm/rustls-tls-webpki-roots"]
+native-tls = ["tls", "tokio-native-tls", "tokio-tungstenite/native-tls" ]
+rustls = ["tls", "tokio-rustls", "tokio-tungstenite/rustls-tls-webpki-roots" ]
 
 [dev-dependencies]
 tokio = { version = "1.17.0", features = ["full"] }
