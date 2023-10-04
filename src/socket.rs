@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tokio_tungstenite::tungstenite::error::Error as WSError;
+use tokio_tungstenite_wasm::Error as WSError;
 
 /// Wrapper trait for `Fn(Duration) -> RawMessage`.
 pub trait SocketHeartbeatPingFn: Fn(Duration) -> RawMessage + Sync + Send {}

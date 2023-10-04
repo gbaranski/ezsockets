@@ -31,6 +31,9 @@ http-body = { version = "0.4.5", optional = true }
 hyper = { version = "0.14.23", optional = true }
 sha-1 = { version = "0.10.1", optional = true }
 
+#tokio-tungstenite-wasm = { version = "0.1.0", optional = true }
+tokio-tungstenite-wasm = { git = "https://github.com/UkoeHB/tokio-tungstenite-wasm", rev = "d8c9048", optional = true }
+
 tokio-tungstenite = { version = "0.20.0", optional = true }
 tokio-rustls = { version = "0.24.1", optional = true }
 tokio-native-tls = { version = "0.3.1", optional = true }
@@ -42,13 +45,13 @@ client = ["tokio-tungstenite"]
 
 tungstenite_common = ["tokio-tungstenite"]
 
-server = ["tungstenite_common"]
+server = ["tungstenite_common", "tokio-tungstenite-wasm"]
 tungstenite = ["server"]
 axum = ["server", "dep:axum", "axum-core", "bytes", "futures-util", "http-body", "hyper", "sha-1"]
 
-tls = []
-native-tls = ["tls", "tokio-native-tls", "tokio-tungstenite/native-tls"]
-rustls = ["tls", "tokio-rustls", "tokio-tungstenite/rustls-tls-webpki-roots"]
+tls = ["server"]
+native-tls = ["tls", "tokio-native-tls", "tokio-tungstenite/native-tls", "tokio-tungstenite-wasm/native-tls"]
+rustls = ["tls", "tokio-rustls", "tokio-tungstenite/rustls-tls-webpki-roots", "tokio-tungstenite-wasm/rustls-tls-webpki-roots"]
 
 [dev-dependencies]
 tokio = { version = "1.17.0", features = ["full"] }

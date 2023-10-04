@@ -64,7 +64,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio_tungstenite::tungstenite;
-use tokio_tungstenite::tungstenite::error::Error as WSError;
+use tokio_tungstenite_wasm::Error as WSError;
 use url::Url;
 
 pub const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
