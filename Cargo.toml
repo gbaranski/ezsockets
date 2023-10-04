@@ -40,9 +40,10 @@ tokio-rustls = { version = "0.24.1", optional = true }
 tokio-native-tls = { version = "0.3.1", optional = true }
 
 [features]
-default = ["client", "server"]
+default = ["native_client", "server"]
 
-client = ["tokio-tungstenite"]
+client = ["tokio-tungstenite-wasm"]
+native_client = ["client", "tokio-tungstenite"]
 
 tungstenite_common = ["tokio-tungstenite"]
 

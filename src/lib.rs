@@ -5,9 +5,11 @@
 //!
 //! Refer to [`client`] or [`server`] module for detailed implementation guides.
 
+mod client_connectors;
 mod server_runners;
 mod socket;
 
+pub use client_connectors::*;
 pub use server_runners::*;
 
 pub use socket::CloseCode;
