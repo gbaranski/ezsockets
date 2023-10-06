@@ -122,7 +122,7 @@ where
                 continue;
             }
         };
-        let (socket, request) = match acceptor.accept(stream, &handle).await {
+        let (socket, request) = match acceptor.accept(stream, handle).await {
             Ok(socket) => socket,
             Err(err) => {
                 tracing::warn!(%address, "failed to accept websocket connection: {:?}", err);

@@ -11,24 +11,30 @@ pub struct ClientConnectorTokio {
 
 impl ClientConnectorTokio {
     pub fn new(handle: tokio::runtime::Handle) -> Self {
-        Self { handle: handle.into() }
+        Self {
+            handle: handle.into(),
+        }
     }
 }
 
 impl Default for ClientConnectorTokio {
     fn default() -> Self {
         let handle = enfync::builtin::native::TokioHandle::try_adopt()
-            .expect("ClientConnectorTokio::default() only works inside a tokio runtime; use ClientConnectorTokionew() instead");
+            .expect(
+                "ClientConnectorTokio::default() only works inside a tokio runtime; use ClientConnectorTokio::new() instead"
+            );
         Self { handle }
     }
 }
 
 #[async_trait::async_trait]
 impl ClientConnector for ClientConnectorTokio {
-    type Handle  = enfync::builtin::native::TokioHandle;
+    type Handle = enfync::builtin::native::TokioHandle;
     type Message = tungstenite::Message;
     type WSError = tungstenite::error::Error;
-    type Socket  = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+    type Socket = tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >;
     type ConnectError = tungstenite::error::Error;
 
     /// Get the connector's runtime handle.

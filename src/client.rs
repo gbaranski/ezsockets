@@ -58,9 +58,9 @@ use crate::Socket;
 use async_trait::async_trait;
 use base64::Engine;
 use enfync::Handle;
+use futures::{SinkExt, StreamExt};
 use http::header::HeaderName;
 use http::HeaderValue;
-use futures::{SinkExt, StreamExt};
 use std::fmt;
 use std::future::Future;
 use std::time::Duration;
@@ -262,12 +262,11 @@ pub trait ClientConnector {
     type Handle: enfync::Handle;
     type Message: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static;
     type WSError: std::error::Error + Into<WSError>;
-    type Socket:
-        SinkExt<Self::Message, Error = Self::WSError> +
-        StreamExt<Item = Result<Self::Message, Self::WSError>> +
-        Unpin +
-        Send +
-        'static;
+    type Socket: SinkExt<Self::Message, Error = Self::WSError>
+        + StreamExt<Item = Result<Self::Message, Self::WSError>>
+        + Unpin
+        + Send
+        + 'static;
     type ConnectError: std::error::Error + Send;
 
     /// Get the connector's runtime handle.
@@ -384,7 +383,12 @@ pub async fn connect<E: ClientExt + 'static>(
 ) -> (Client<E>, impl Future<Output = Result<(), Error>>) {
     let client_connector = crate::client_connector_tokio::ClientConnectorTokio::default();
     let (handle, mut future) = connect_with(client_fn, config, client_connector);
-    let future = async move { future.extract().await.unwrap_or(Err("client actor crashed".into())) };
+    let future = async move {
+        future
+            .extract()
+            .await
+            .unwrap_or(Err("client actor crashed".into()))
+    };
     (handle, future)
 }
 

@@ -477,7 +477,7 @@ impl Stream {
     fn new<M, S>(
         stream: S,
         last_alive: Arc<Mutex<Instant>>,
-        handle: impl enfync::Handle
+        handle: impl enfync::Handle,
     ) -> (enfync::PendingResult<()>, Self)
     where
         M: Into<RawMessage> + std::fmt::Debug + Send + 'static,
@@ -507,7 +507,11 @@ pub struct Socket {
 }
 
 impl Socket {
-    pub fn new<M, E: std::error::Error, S>(socket: S, config: SocketConfig, handle: impl enfync::Handle) -> Self
+    pub fn new<M, E: std::error::Error, S>(
+        socket: S,
+        config: SocketConfig,
+        handle: impl enfync::Handle,
+    ) -> Self
     where
         M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,
         E: Into<WSError>,
@@ -523,15 +527,21 @@ impl Socket {
         );
         let (hearbeat_abort_sender, hearbeat_abort_receiver) = oneshot::channel();
         let sink_clone = sink.clone();
-        handle.spawn(async move { socket_heartbeat(sink_clone, config, hearbeat_abort_receiver, last_alive).await });
+        handle.spawn(async move {
+            socket_heartbeat(sink_clone, config, hearbeat_abort_receiver, last_alive).await
+        });
 
         let (sink_result_sender, sink_result_receiver) = oneshot::channel();
         handle.spawn(async move {
             let _ = stream_future.extract().await;
             let _ = sink_abort_sender.send(());
             let _ = hearbeat_abort_sender.send(());
-            let _ =
-                sink_result_sender.send(sink_future.await.unwrap_or(Err(WSError::AlreadyClosed)));
+            let _ = sink_result_sender.send(
+                sink_future
+                    .extract()
+                    .await
+                    .unwrap_or(Err(WSError::AlreadyClosed)),
+            );
         });
 
         Self {
@@ -574,7 +584,7 @@ async fn socket_heartbeat(
     config: SocketConfig,
     mut abort_receiver: oneshot::Receiver<()>,
     last_alive: Arc<Mutex<Instant>>,
-){
+) {
     let mut interval = tokio::time::interval(config.heartbeat);
 
     loop {
@@ -592,7 +602,7 @@ async fn socket_heartbeat(
                 }
                 let timestamp = SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or(Duration::default());
+                    .unwrap_or_default();
                 if sink
                     .send_raw(InRawMessage::new((config.heartbeat_ping_msg_fn)(timestamp)))
                     .await
