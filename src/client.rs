@@ -64,6 +64,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio_tungstenite::tungstenite;
+use tokio_tungstenite::tungstenite::error::Error as WSError;
 use url::Url;
 
 pub const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
@@ -394,9 +395,24 @@ impl<E: ClientExt> ClientActor<E> {
         loop {
             tokio::select! {
                 Some(inmessage) = self.to_socket_receiver.recv() => {
-                    let mut closed_self = matches!(inmessage.message, Some(Message::Close(_)));
+                    let closed_self = matches!(inmessage.message, Some(Message::Close(_)));
                     if self.socket.send(inmessage).await.is_err() {
-                        closed_self = true;
+                        match self.socket.await_sink_close().await {
+                            Err(WSError::ConnectionClosed) |
+                            Err(WSError::AlreadyClosed) |
+                            Err(WSError::Io(_)) |
+                            Err(WSError::Tls(_)) => {
+                                // either:
+                                // A) The connection was closed via the close protocol, so we will allow the stream to
+                                //    handle it.
+                                // B) We already tried and failed to submit another message, so now we are
+                                //    waiting for other parts of the tokio::select to shut us down.
+                                // C) An IO error means the connection closed unexpectedly, so we can try to reconnect when
+                                //    the stream fails.
+                            }
+                            Err(_) if !closed_self => return Err(Error::from("unexpected sink error, aborting client actor")),
+                            _ => (),
+                        }
                     }
                     if closed_self {
                         tracing::trace!("client closed itself");
@@ -433,6 +449,7 @@ impl<E: ClientExt> ClientActor<E> {
                             };
                         }
                         Some(Err(error)) => {
+                            let error = Error::from(error);
                             tracing::warn!("connection error: {error}");
                         }
                         None => {

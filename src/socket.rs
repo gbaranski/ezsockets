@@ -1,4 +1,3 @@
-use crate::Error;
 use futures::{SinkExt, StreamExt, TryStreamExt};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
@@ -11,6 +10,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use tokio_tungstenite::tungstenite::error::Error as WSError;
 
 /// Wrapper trait for `Fn(Duration) -> RawMessage`.
 pub trait SocketHeartbeatPingFn: Fn(Duration) -> RawMessage + Sync + Send {}
@@ -317,7 +317,7 @@ impl Drop for InMessage {
 struct SinkActor<M, S>
 where
     M: From<RawMessage>,
-    S: SinkExt<M, Error = Error> + Unpin,
+    S: SinkExt<M, Error = WSError> + Unpin,
 {
     receiver: mpsc::UnboundedReceiver<InRawMessage>,
     abort_receiver: oneshot::Receiver<()>,
@@ -328,9 +328,9 @@ where
 impl<M, S> SinkActor<M, S>
 where
     M: From<RawMessage>,
-    S: SinkExt<M, Error = Error> + Unpin,
+    S: SinkExt<M, Error = WSError> + Unpin,
 {
-    async fn run(&mut self) -> Result<(), Error> {
+    async fn run(&mut self) -> Result<(), WSError> {
         loop {
             tokio::select! {
                 Some(mut inmessage) = self.receiver.recv() => {
@@ -368,10 +368,10 @@ impl Sink {
     fn new<M, S>(
         sink: S,
         abort_receiver: oneshot::Receiver<()>,
-    ) -> (tokio::task::JoinHandle<Result<(), Error>>, Self)
+    ) -> (tokio::task::JoinHandle<Result<(), WSError>>, Self)
     where
         M: From<RawMessage> + Send + 'static,
-        S: SinkExt<M, Error = Error> + Unpin + Send + 'static,
+        S: SinkExt<M, Error = WSError> + Unpin + Send + 'static,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
         let mut actor = SinkActor {
@@ -407,9 +407,9 @@ impl Sink {
 struct StreamActor<M, S>
 where
     M: Into<RawMessage>,
-    S: StreamExt<Item = Result<M, Error>> + Unpin,
+    S: StreamExt<Item = Result<M, WSError>> + Unpin,
 {
-    sender: mpsc::UnboundedSender<Result<Message, Error>>,
+    sender: mpsc::UnboundedSender<Result<Message, WSError>>,
     stream: S,
     last_alive: Arc<Mutex<Instant>>,
 }
@@ -417,7 +417,7 @@ where
 impl<M, S> StreamActor<M, S>
 where
     M: Into<RawMessage>,
-    S: StreamExt<Item = Result<M, Error>> + Unpin,
+    S: StreamExt<Item = Result<M, WSError>> + Unpin,
 {
     async fn run(mut self) {
         while let Some(result) = self.stream.next().await {
@@ -438,7 +438,7 @@ where
                             let timestamp = Duration::from_millis(timestamp as u64); // TODO: handle overflow
                             let latency = SystemTime::now()
                                 .duration_since(UNIX_EPOCH + timestamp)
-                                .unwrap_or(Duration::default());
+                                .unwrap_or_default();
                             // TODO: handle time zone
                             tracing::trace!("latency: {}ms", latency.as_millis());
                         }
@@ -470,14 +470,14 @@ where
 
 #[derive(Debug)]
 pub struct Stream {
-    receiver: mpsc::UnboundedReceiver<Result<Message, Error>>,
+    receiver: mpsc::UnboundedReceiver<Result<Message, WSError>>,
 }
 
 impl Stream {
     fn new<M, S>(stream: S, last_alive: Arc<Mutex<Instant>>) -> (JoinHandle<()>, Self)
     where
         M: Into<RawMessage> + std::fmt::Debug + Send + 'static,
-        S: StreamExt<Item = Result<M, Error>> + Unpin + Send + 'static,
+        S: StreamExt<Item = Result<M, WSError>> + Unpin + Send + 'static,
     {
         let (sender, receiver) = mpsc::unbounded_channel();
         let actor = StreamActor {
@@ -490,7 +490,7 @@ impl Stream {
         (future, Self { receiver })
     }
 
-    pub async fn recv(&mut self) -> Option<Result<Message, Error>> {
+    pub async fn recv(&mut self) -> Option<Result<Message, WSError>> {
         self.receiver.recv().await
     }
 }
@@ -499,13 +499,14 @@ impl Stream {
 pub struct Socket {
     pub sink: Sink,
     pub stream: Stream,
+    sink_result_receiver: Option<oneshot::Receiver<Result<(), WSError>>>,
 }
 
 impl Socket {
     pub fn new<M, E: std::error::Error, S>(socket: S, config: SocketConfig) -> Self
     where
         M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,
-        E: Into<Error>,
+        E: Into<WSError>,
         S: SinkExt<M, Error = E> + Unpin + StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
     {
         let last_alive = Instant::now();
@@ -535,7 +536,7 @@ impl Socket {
                     }
                     let timestamp = SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or(Duration::default());
+                        .unwrap_or_default();
                     if sink
                         .send_raw(InRawMessage::new((config.heartbeat_ping_msg_fn)(timestamp)))
                         .await
@@ -547,14 +548,20 @@ impl Socket {
             }
         });
 
+        let (sink_result_sender, sink_result_receiver) = oneshot::channel();
         tokio::spawn(async move {
             let _ = stream_future.await;
             let _ = sink_abort_sender.send(());
             heartbeat_future.abort();
-            let _ = sink_future.await; //todo: send result to socket
+            let _ =
+                sink_result_sender.send(sink_future.await.unwrap_or(Err(WSError::AlreadyClosed)));
         });
 
-        Self { sink, stream }
+        Self {
+            sink,
+            stream,
+            sink_result_receiver: Some(sink_result_receiver),
+        }
     }
 
     pub async fn send(
@@ -571,7 +578,16 @@ impl Socket {
         self.sink.send_raw(message).await
     }
 
-    pub async fn recv(&mut self) -> Option<Result<Message, Error>> {
+    pub async fn recv(&mut self) -> Option<Result<Message, WSError>> {
         self.stream.recv().await
+    }
+
+    pub(crate) async fn await_sink_close(&mut self) -> Result<(), WSError> {
+        let Some(sink_result_receiver) = self.sink_result_receiver.take() else {
+            return Err(WSError::AlreadyClosed);
+        };
+        sink_result_receiver
+            .await
+            .unwrap_or(Err(WSError::AlreadyClosed))
     }
 }
