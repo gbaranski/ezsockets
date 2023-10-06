@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
     - Add `ClientConfig::socket_config()` setter so clients can define their socket's config.
     - Add `ezsockets::axum::Upgrade::on_upgrade_with_config()` that accepts a `SocketConfig`.
 - Refactor `ezeockets::client::connect()` to use a retry loop for the initial connection. Add `max_initial_connect_attempts` and `max_reconnect_attempts` options to the `ClientConfig` (they default to 'infinite').
+- Move `axum` and `tungstenite` server runners into new submodule `src/server_runners`.
+- Update to `tokio-tungstenite` v0.20.0.
+- Fork [axum-tungstenite](https://crates.io/crates/axum-tungstenite) crate into `src/server_runners` and refactor the `axum` runner to use that instead of `axum::extract::ws`.
 
 
 Migration guide:
