@@ -585,12 +585,14 @@ async fn socket_heartbeat(
     mut abort_receiver: oneshot::Receiver<()>,
     last_alive: Arc<Mutex<Instant>>,
 ) {
-    let mut interval = tokio::time::interval(config.heartbeat);
+    let sleep = tokio::time::sleep(config.heartbeat);
+    tokio::pin!(sleep);
 
     loop {
         tokio::select! {
-            _ = interval.tick() => {
-                if last_alive.lock().await.elapsed() > config.timeout {
+            _ = &mut sleep => {
+                let elapsed_since_last_alive = last_alive.lock().await.elapsed();
+                if elapsed_since_last_alive > config.timeout {
                     tracing::info!("closing connection due to timeout");
                     let _ = sink
                         .send_raw(InRawMessage::new(RawMessage::Close(Some(CloseFrame {
@@ -599,6 +601,15 @@ async fn socket_heartbeat(
                         }))))
                         .await;
                     return;
+                } else if elapsed_since_last_alive < config.heartbeat {
+                    // todo: this branch will needlessly fire at least once per heartbeat for idle connections since
+                    //       Pongs arrive after some delay
+                    sleep.as_mut().reset(
+                        tokio::time::Instant::now() + config.heartbeat.saturating_sub(elapsed_since_last_alive)
+                    );
+                    continue;
+                } else {
+                    sleep.as_mut().reset(tokio::time::Instant::now() + config.heartbeat);
                 }
                 let timestamp = SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
