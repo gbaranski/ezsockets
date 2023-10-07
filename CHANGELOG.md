@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Move `axum` and `tungstenite` server runners into new submodule `src/server_runners`.
 - Update to `tokio-tungstenite` v0.20.0.
 - Fork [axum-tungstenite](https://crates.io/crates/axum-tungstenite) crate into `src/server_runners` and refactor the `axum` runner to use that instead of `axum::extract::ws`.
+- Bug fix: remove race condition between sending a message and a socket connection closing that would cause a client to shut down instead of calling `on_disconnect/on_close`.
+- Use [`tokio-tungstenite-wasm`](https://github.com/TannerRogalsky/tokio-tungstenite-wasm) errors internally to better support cross-platform clients.
+- Use [`enfync`](https://github.com/UkoeHB/enfync) runtime handles internally to better support cross-platform clients. Default clients continue to use tokio.
+- Add `ClientConnector` abstraction for connecting clients and add `ezsockets::client::connect_with`.
 
 
 Migration guide:

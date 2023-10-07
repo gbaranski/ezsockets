@@ -68,6 +68,7 @@ use async_trait::async_trait;
 use axum::extract::ConnectInfo;
 use axum::extract::FromRequest;
 use axum::response::Response;
+use enfync::TryAdopt;
 use std::net::SocketAddr;
 
 /// Extractor for establishing WebSocket connections.
@@ -151,7 +152,9 @@ impl Upgrade {
         socket_config: SocketConfig,
     ) -> Response {
         self.ws.on_upgrade(move |socket| async move {
-            let socket = Socket::new(socket, socket_config);
+            let handle = enfync::builtin::native::TokioHandle::try_adopt()
+                .expect("axum server runner only works in a tokio runtime");
+            let socket = Socket::new(socket, socket_config, handle);
             server.accept(socket, self.request, self.address);
         })
     }

@@ -52,10 +52,13 @@ use crate::socket::{InMessage, MessageSignal, SocketConfig};
 use crate::CloseFrame;
 use crate::Error;
 use crate::Message;
+use crate::RawMessage;
 use crate::Request;
 use crate::Socket;
 use async_trait::async_trait;
 use base64::Engine;
+use enfync::Handle;
+use futures::{SinkExt, StreamExt};
 use http::header::HeaderName;
 use http::HeaderValue;
 use std::fmt;
@@ -64,7 +67,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio_tungstenite::tungstenite;
-use tokio_tungstenite::tungstenite::error::Error as WSError;
+use tokio_tungstenite_wasm::Error as WSError;
 use url::Url;
 
 pub const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
@@ -249,6 +252,33 @@ pub trait ClientExt: Send {
     }
 }
 
+/// Abstract interface used by clients to connect to servers.
+///
+/// The connector must expose a handle representing the runtime that the client will run on. The runtime should
+/// be compatible with the connection method (e.g. `tokio` for `tokio_tungstenite::connect()`,
+/// `wasm_bindgen_futures::spawn_local()` for a WASM connector, etc.).
+#[async_trait]
+pub trait ClientConnector {
+    type Handle: enfync::Handle;
+    type Message: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static;
+    type WSError: std::error::Error + Into<WSError>;
+    type Socket: SinkExt<Self::Message, Error = Self::WSError>
+        + StreamExt<Item = Result<Self::Message, Self::WSError>>
+        + Unpin
+        + Send
+        + 'static;
+    type ConnectError: std::error::Error + Send;
+
+    /// Get the connector's runtime handle.
+    fn handle(&self) -> Self::Handle;
+
+    /// Connect to a websocket server.
+    ///
+    /// Returns `Err` if the request is invalid.
+    async fn connect(&self, request: Request) -> Result<Self::Socket, Self::ConnectError>;
+}
+
+/// An `ezsockets` client.
 #[derive(Debug)]
 pub struct Client<E: ClientExt> {
     to_socket_sender: mpsc::UnboundedSender<InMessage>,
@@ -343,10 +373,31 @@ impl<E: ClientExt> Client<E> {
     }
 }
 
+/// Connect to a websocket server using the default client connector.
+/// - Requires feature `native_client`.
+/// - May only be invoked from within a tokio runtime.
+#[cfg(feature = "native_client")]
 pub async fn connect<E: ClientExt + 'static>(
     client_fn: impl FnOnce(Client<E>) -> E,
     config: ClientConfig,
 ) -> (Client<E>, impl Future<Output = Result<(), Error>>) {
+    let client_connector = crate::client_connector_tokio::ClientConnectorTokio::default();
+    let (handle, mut future) = connect_with(client_fn, config, client_connector);
+    let future = async move {
+        future
+            .extract()
+            .await
+            .unwrap_or(Err("client actor crashed".into()))
+    };
+    (handle, future)
+}
+
+/// Connect to a websocket server with the provided client connector.
+pub fn connect_with<E: ClientExt + 'static>(
+    client_fn: impl FnOnce(Client<E>) -> E,
+    config: ClientConfig,
+    client_connector: impl ClientConnector + Send + Sync + 'static,
+) -> (Client<E>, enfync::PendingResult<Result<(), Error>>) {
     let (to_socket_sender, mut to_socket_receiver) = mpsc::unbounded_channel();
     let (client_call_sender, client_call_receiver) = mpsc::unbounded_channel();
     let handle = Client {
@@ -354,11 +405,13 @@ pub async fn connect<E: ClientExt + 'static>(
         client_call_sender,
     };
     let mut client = client_fn(handle.clone());
-    let future = tokio::spawn(async move {
+    let runtime_handle = client_connector.handle();
+    let future = runtime_handle.spawn(async move {
         tracing::info!("connecting to {}...", config.url);
         let Some(socket) = client_connect(
             config.max_initial_connect_attempts,
             &config,
+            &client_connector,
             &mut to_socket_receiver,
             &mut client,
         )
@@ -374,30 +427,35 @@ pub async fn connect<E: ClientExt + 'static>(
             client_call_receiver,
             socket,
             config,
+            client_connector,
         };
         actor.run().await?;
         Ok(())
     });
-    let future = async move { future.await.unwrap_or(Err("client actor crashed".into())) };
     (handle, future)
 }
 
-struct ClientActor<E: ClientExt> {
+struct ClientActor<E: ClientExt, C: ClientConnector> {
     client: E,
     to_socket_receiver: mpsc::UnboundedReceiver<InMessage>,
     client_call_receiver: mpsc::UnboundedReceiver<E::Call>,
     socket: Socket,
     config: ClientConfig,
+    client_connector: C,
 }
 
-impl<E: ClientExt> ClientActor<E> {
+impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
     async fn run(&mut self) -> Result<(), Error> {
         loop {
             tokio::select! {
                 Some(inmessage) = self.to_socket_receiver.recv() => {
                     let closed_self = matches!(inmessage.message, Some(Message::Close(_)));
                     if self.socket.send(inmessage).await.is_err() {
-                        match self.socket.await_sink_close().await {
+                        let result = self.socket.await_sink_close().await;
+                        if let Err(err) = &result {
+                            tracing::warn!(?err, "encountered sink closing error when trying to send a message");
+                        }
+                        match result {
                             Err(WSError::ConnectionClosed) |
                             Err(WSError::AlreadyClosed) |
                             Err(WSError::Io(_)) |
@@ -436,6 +494,7 @@ impl<E: ClientExt> ClientActor<E> {
                                             let Some(socket) = client_connect(
                                                 self.config.max_reconnect_attempts,
                                                 &self.config,
+                                                &self.client_connector,
                                                 &mut self.to_socket_receiver,
                                                 &mut self.client,
                                             ).await? else {
@@ -460,6 +519,7 @@ impl<E: ClientExt> ClientActor<E> {
                                     let Some(socket) = client_connect(
                                         self.config.max_reconnect_attempts,
                                         &self.config,
+                                        &self.client_connector,
                                         &mut self.to_socket_receiver,
                                         &mut self.client,
                                     ).await? else {
@@ -481,9 +541,10 @@ impl<E: ClientExt> ClientActor<E> {
 }
 
 /// Returns Ok(Some(socket)) if connecting succeeded, Ok(None) if the client closed itself, and `Err` if an error occurred.
-async fn client_connect<E: ClientExt>(
+async fn client_connect<E: ClientExt, Connector: ClientConnector>(
     max_attempts: usize,
     config: &ClientConfig,
+    client_connector: &Connector,
     to_socket_receiver: &mut mpsc::UnboundedReceiver<InMessage>,
     client: &mut E,
 ) -> Result<Option<Socket>, Error> {
@@ -491,15 +552,19 @@ async fn client_connect<E: ClientExt>(
         // connection attempt
         tracing::info!("connecting attempt no: {}...", i);
         let connect_http_request = config.connect_http_request();
-        let result = tokio_tungstenite::connect_async(connect_http_request).await;
+        let result = client_connector.connect(connect_http_request).await;
         match result {
-            Ok((socket, _)) => {
+            Ok(socket_impl) => {
                 tracing::info!("successfully connected");
                 if let Err(err) = client.on_connect().await {
                     tracing::error!("calling on_connect() failed due to {}, closing client", err);
                     return Err(err);
                 }
-                let socket = Socket::new(socket, config.socket_config.clone().unwrap_or_default());
+                let socket = Socket::new(
+                    socket_impl,
+                    config.socket_config.clone().unwrap_or_default(),
+                    client_connector.handle(),
+                );
                 return Ok(Some(socket));
             }
             Err(err) => {

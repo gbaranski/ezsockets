@@ -9,8 +9,7 @@ use std::{
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
-use tokio_tungstenite::tungstenite::error::Error as WSError;
+use tokio_tungstenite_wasm::Error as WSError;
 
 /// Wrapper trait for `Fn(Duration) -> RawMessage`.
 pub trait SocketHeartbeatPingFn: Fn(Duration) -> RawMessage + Sync + Send {}
@@ -368,7 +367,8 @@ impl Sink {
     fn new<M, S>(
         sink: S,
         abort_receiver: oneshot::Receiver<()>,
-    ) -> (tokio::task::JoinHandle<Result<(), WSError>>, Self)
+        handle: impl enfync::Handle,
+    ) -> (enfync::PendingResult<Result<(), WSError>>, Self)
     where
         M: From<RawMessage> + Send + 'static,
         S: SinkExt<M, Error = WSError> + Unpin + Send + 'static,
@@ -380,7 +380,7 @@ impl Sink {
             sink,
             phantom: Default::default(),
         };
-        let future = tokio::spawn(async move { actor.run().await });
+        let future = handle.spawn(async move { actor.run().await });
         (future, Self { sender })
     }
 
@@ -474,7 +474,11 @@ pub struct Stream {
 }
 
 impl Stream {
-    fn new<M, S>(stream: S, last_alive: Arc<Mutex<Instant>>) -> (JoinHandle<()>, Self)
+    fn new<M, S>(
+        stream: S,
+        last_alive: Arc<Mutex<Instant>>,
+        handle: impl enfync::Handle,
+    ) -> (enfync::PendingResult<()>, Self)
     where
         M: Into<RawMessage> + std::fmt::Debug + Send + 'static,
         S: StreamExt<Item = Result<M, WSError>> + Unpin + Send + 'static,
@@ -485,7 +489,7 @@ impl Stream {
             stream,
             last_alive,
         };
-        let future = tokio::spawn(actor.run());
+        let future = handle.spawn(actor.run());
 
         (future, Self { receiver })
     }
@@ -503,7 +507,11 @@ pub struct Socket {
 }
 
 impl Socket {
-    pub fn new<M, E: std::error::Error, S>(socket: S, config: SocketConfig) -> Self
+    pub fn new<M, E: std::error::Error, S>(
+        socket: S,
+        config: SocketConfig,
+        handle: impl enfync::Handle,
+    ) -> Self
     where
         M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,
         E: Into<WSError>,
@@ -513,48 +521,27 @@ impl Socket {
         let last_alive = Arc::new(Mutex::new(last_alive));
         let (sink, stream) = socket.sink_err_into().err_into().split();
         let (sink_abort_sender, sink_abort_receiver) = oneshot::channel();
-        let ((sink_future, sink), (stream_future, stream)) = (
-            Sink::new(sink, sink_abort_receiver),
-            Stream::new(stream, last_alive.clone()),
+        let ((mut sink_future, sink), (mut stream_future, stream)) = (
+            Sink::new(sink, sink_abort_receiver, handle.clone()),
+            Stream::new(stream, last_alive.clone(), handle.clone()),
         );
-        let heartbeat_future = tokio::spawn({
-            let sink = sink.clone();
-            async move {
-                let mut interval = tokio::time::interval(config.heartbeat);
-
-                loop {
-                    interval.tick().await;
-                    if last_alive.lock().await.elapsed() > config.timeout {
-                        tracing::info!("closing connection due to timeout");
-                        let _ = sink
-                            .send_raw(InRawMessage::new(RawMessage::Close(Some(CloseFrame {
-                                code: CloseCode::Normal,
-                                reason: String::from("client is inactive"),
-                            }))))
-                            .await;
-                        return;
-                    }
-                    let timestamp = SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default();
-                    if sink
-                        .send_raw(InRawMessage::new((config.heartbeat_ping_msg_fn)(timestamp)))
-                        .await
-                        .is_err()
-                    {
-                        break;
-                    }
-                }
-            }
+        let (hearbeat_abort_sender, hearbeat_abort_receiver) = oneshot::channel();
+        let sink_clone = sink.clone();
+        handle.spawn(async move {
+            socket_heartbeat(sink_clone, config, hearbeat_abort_receiver, last_alive).await
         });
 
         let (sink_result_sender, sink_result_receiver) = oneshot::channel();
-        tokio::spawn(async move {
-            let _ = stream_future.await;
+        handle.spawn(async move {
+            let _ = stream_future.extract().await;
             let _ = sink_abort_sender.send(());
-            heartbeat_future.abort();
-            let _ =
-                sink_result_sender.send(sink_future.await.unwrap_or(Err(WSError::AlreadyClosed)));
+            let _ = hearbeat_abort_sender.send(());
+            let _ = sink_result_sender.send(
+                sink_future
+                    .extract()
+                    .await
+                    .unwrap_or(Err(WSError::AlreadyClosed)),
+            );
         });
 
         Self {
@@ -589,5 +576,43 @@ impl Socket {
         sink_result_receiver
             .await
             .unwrap_or(Err(WSError::AlreadyClosed))
+    }
+}
+
+async fn socket_heartbeat(
+    sink: Sink,
+    config: SocketConfig,
+    mut abort_receiver: oneshot::Receiver<()>,
+    last_alive: Arc<Mutex<Instant>>,
+) {
+    let mut interval = tokio::time::interval(config.heartbeat);
+
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                if last_alive.lock().await.elapsed() > config.timeout {
+                    tracing::info!("closing connection due to timeout");
+                    let _ = sink
+                        .send_raw(InRawMessage::new(RawMessage::Close(Some(CloseFrame {
+                            code: CloseCode::Normal,
+                            reason: String::from("remote partner is inactive"),
+                        }))))
+                        .await;
+                    return;
+                }
+                let timestamp = SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default();
+                if sink
+                    .send_raw(InRawMessage::new((config.heartbeat_ping_msg_fn)(timestamp)))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            _ = &mut abort_receiver => break,
+            else => break,
+        }
     }
 }

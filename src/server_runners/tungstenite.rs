@@ -39,6 +39,8 @@ use crate::ServerExt;
 use crate::Socket;
 use crate::SocketConfig;
 
+use enfync::TryAdopt;
+
 use tokio_tungstenite::tungstenite;
 
 use tokio::net::TcpListener;
@@ -54,7 +56,11 @@ pub enum Acceptor {
 }
 
 impl Acceptor {
-    async fn accept(&self, stream: TcpStream) -> Result<(Socket, Request), Error> {
+    async fn accept(
+        &self,
+        stream: TcpStream,
+        handle: &enfync::builtin::native::TokioHandle,
+    ) -> Result<(Socket, Request), Error> {
         let mut req0 = None;
         let callback = |req: &http::Request<()>,
                         resp: http::Response<()>|
@@ -76,19 +82,19 @@ impl Acceptor {
         let socket = match self {
             Acceptor::Plain => {
                 let socket = tokio_tungstenite::accept_hdr_async(stream, callback).await?;
-                Socket::new(socket, SocketConfig::default())
+                Socket::new(socket, SocketConfig::default(), handle.clone())
             }
             #[cfg(feature = "native-tls")]
             Acceptor::NativeTls(acceptor) => {
                 let tls_stream = acceptor.accept(stream).await?;
                 let socket = tokio_tungstenite::accept_hdr_async(tls_stream, callback).await?;
-                Socket::new(socket, SocketConfig::default())
+                Socket::new(socket, SocketConfig::default(), handle.clone())
             }
             #[cfg(feature = "rustls")]
             Acceptor::Rustls(acceptor) => {
                 let tls_stream = acceptor.accept(stream).await?;
                 let socket = tokio_tungstenite::accept_hdr_async(tls_stream, callback).await?;
-                Socket::new(socket, SocketConfig::default())
+                Socket::new(socket, SocketConfig::default(), handle.clone())
             }
         };
         let Some(req_body) = req0 else {
@@ -102,6 +108,7 @@ async fn run_acceptor<E>(
     server: Server<E>,
     listener: TcpListener,
     acceptor: Acceptor,
+    handle: &enfync::builtin::native::TokioHandle,
 ) -> Result<(), Error>
 where
     E: ServerExt + 'static,
@@ -115,7 +122,7 @@ where
                 continue;
             }
         };
-        let (socket, request) = match acceptor.accept(stream).await {
+        let (socket, request) = match acceptor.accept(stream, handle).await {
             Ok(socket) => socket,
             Err(err) => {
                 tracing::warn!(%address, "failed to accept websocket connection: {:?}", err);
@@ -133,7 +140,7 @@ where
     A: ToSocketAddrs,
 {
     let listener = TcpListener::bind(address).await?;
-    run_acceptor(server, listener, Acceptor::Plain).await
+    run_on(server, listener, Acceptor::Plain).await
 }
 
 /// Run the server on custom `Listener` and `Acceptor`
@@ -146,5 +153,7 @@ pub async fn run_on<E>(
 where
     E: ServerExt + 'static,
 {
-    run_acceptor(server, listener, acceptor).await
+    let handle = enfync::builtin::native::TokioHandle::try_adopt()
+        .expect("tungstenite server runner only works in a tokio runtime");
+    run_acceptor(server, listener, acceptor, &handle).await
 }
