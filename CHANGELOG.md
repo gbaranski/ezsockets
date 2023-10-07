@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Use [`tokio-tungstenite-wasm`](https://github.com/TannerRogalsky/tokio-tungstenite-wasm) errors internally to better support cross-platform clients.
 - Use [`enfync`](https://github.com/UkoeHB/enfync) runtime handles internally to better support cross-platform clients. Default clients continue to use tokio.
 - Add `ClientConnector` abstraction for connecting clients and add `ezsockets::client::connect_with`.
+- Add `ClientConnectorWasm` and `wasm_client` feature.
 
 
 Migration guide:

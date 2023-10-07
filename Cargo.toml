@@ -19,7 +19,7 @@ base64 = "0.21.0"
 enfync = "0.1.0"
 futures = "0.3.21"
 http = "0.2.8"
-tokio = { version = "1.17.0", features = ["sync", "rt", "macros", "time"] }
+tokio = { version = "1.17.0", features = ["sync", "macros", "time"] }
 tracing = "0.1.31"
 url = "2.2.2"
 cfg-if = "1.0.0"
@@ -42,11 +42,12 @@ tokio-native-tls = { version = "0.3.1", optional = true }
 default = ["native_client", "server"]
 
 client = ["tokio-tungstenite-wasm"]
-native_client = ["client", "tokio-tungstenite"]
+native_client = ["client", "tokio-tungstenite", "tokio/rt"]
+wasm_client = ["client", "tokio-tungstenite-wasm"]
 
 tungstenite_common = ["tokio-tungstenite"]
 
-server = ["tungstenite_common", "tokio-tungstenite-wasm"]
+server = ["tungstenite_common", "tokio-tungstenite-wasm", "tokio/rt"]
 tungstenite = ["server"]
 axum = ["server", "dep:axum", "axum-core", "bytes", "futures-util", "http-body", "hyper", "sha-1"]
 

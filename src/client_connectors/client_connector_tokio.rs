@@ -1,5 +1,4 @@
-use crate::client::ClientConnector;
-use crate::Request;
+use crate::client::{ClientConfig, ClientConnector};
 use enfync::TryAdopt;
 use tokio_tungstenite::tungstenite;
 
@@ -27,6 +26,12 @@ impl Default for ClientConnectorTokio {
     }
 }
 
+impl From<enfync::builtin::native::TokioHandle> for ClientConnectorTokio {
+    fn from(handle: enfync::builtin::native::TokioHandle) -> Self {
+        Self { handle }
+    }
+}
+
 #[async_trait::async_trait]
 impl ClientConnector for ClientConnectorTokio {
     type Handle = enfync::builtin::native::TokioHandle;
@@ -45,7 +50,8 @@ impl ClientConnector for ClientConnectorTokio {
     /// Connect to a websocket server.
     ///
     /// Returns `Err` if the request is invalid.
-    async fn connect(&self, request: Request) -> Result<Self::Socket, Self::ConnectError> {
+    async fn connect(&self, config: &ClientConfig) -> Result<Self::Socket, Self::ConnectError> {
+        let request = config.connect_http_request();
         let (socket, _) = tokio_tungstenite::connect_async(request).await?;
         Ok(socket)
     }

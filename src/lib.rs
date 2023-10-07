@@ -28,6 +28,7 @@ cfg_if::cfg_if! {
         pub mod client;
 
         pub use client::connect;
+        pub use client::connect_with;
         pub use client::ClientConfig;
         pub use client::ClientExt;
         pub use client::Client;
