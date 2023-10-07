@@ -188,7 +188,13 @@ impl ClientConfig {
         self
     }
 
-    fn connect_http_request(&self) -> Request {
+    /// Get the config's headers.
+    pub fn headers(&self) -> &http::HeaderMap {
+        &self.headers
+    }
+
+    /// Extract a Websockets HTTP request.
+    pub fn connect_http_request(&self) -> Request {
         let mut http_request = Request::builder()
             .uri(self.url.as_str())
             .method("GET")
@@ -206,6 +212,13 @@ impl ClientConfig {
             http_request.headers_mut().insert(key.unwrap(), value);
         }
         http_request
+    }
+
+    /// Extract the URL request.
+    ///
+    /// This is needed for WASM clients, where building HTTP requests is deferred to the `web_sys::Websocket` implementation.
+    pub fn connect_url(&self) -> &str {
+        self.url.as_str()
     }
 }
 
@@ -275,7 +288,10 @@ pub trait ClientConnector {
     /// Connect to a websocket server.
     ///
     /// Returns `Err` if the request is invalid.
-    async fn connect(&self, request: Request) -> Result<Self::Socket, Self::ConnectError>;
+    async fn connect(
+        &self,
+        client_config: &ClientConfig,
+    ) -> Result<Self::Socket, Self::ConnectError>;
 }
 
 /// An `ezsockets` client.
@@ -381,7 +397,7 @@ pub async fn connect<E: ClientExt + 'static>(
     client_fn: impl FnOnce(Client<E>) -> E,
     config: ClientConfig,
 ) -> (Client<E>, impl Future<Output = Result<(), Error>>) {
-    let client_connector = crate::client_connector_tokio::ClientConnectorTokio::default();
+    let client_connector = crate::ClientConnectorTokio::default();
     let (handle, mut future) = connect_with(client_fn, config, client_connector);
     let future = async move {
         future
@@ -551,8 +567,7 @@ async fn client_connect<E: ClientExt, Connector: ClientConnector>(
     for i in 1.. {
         // connection attempt
         tracing::info!("connecting attempt no: {}...", i);
-        let connect_http_request = config.connect_http_request();
-        let result = client_connector.connect(connect_http_request).await;
+        let result = client_connector.connect(config).await;
         match result {
             Ok(socket_impl) => {
                 tracing::info!("successfully connected");

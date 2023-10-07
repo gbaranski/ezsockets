@@ -5,8 +5,9 @@ Creating a WebSocket server or a client in Rust can be troublesome. This crate f
 - Traits to allow declarative and event-based programming.
 - Easy concurrency with Tokio and async/await. Server sessions are Clone'able and can be shared between tasks.
 - Heartbeat mechanism to keep the connection alive.
-- Automatic reconnection of WebSocket Client.
-- Support for multiple back-ends such as Axum or Tungstenite.
+- Automatic reconnection of WebSocket Clients.
+- Support for arbitrary client back-ends, with built-in native and WASM client connectors.
+- Support for multiple server back-ends such as Axum or Tungstenite.
 - TLS support for servers with `rustls` and `native-tls`.
 
 ## Documentation
@@ -25,14 +26,14 @@ View the full documentation at [docs.rs/ezsockets](http://docs.rs/ezsockets)
 
 ## Client
 
-[`tokio-tungstenite`](https://github.com/snapview/tokio-tungstenite) is being used under the hood.
+By default clients use [`tokio-tungstenite`](https://github.com/snapview/tokio-tungstenite) under the hood. Disable default features and enable `wasm_client` to run clients on WASM targets.
 
 See [examples/simple-client](https://github.com/gbaranski/ezsockets/tree/master/examples/simple-client) for a simple usage
 and [docs.rs/ezsockets/server](https://docs.rs/ezsockets/latest/ezsockets/client/index.html) for documentation.
 
 ## Server
 
-WebSocket server can use one of supported back-ends:
+WebSocket server can use one of the supported back-ends:
 - [`tokio-tungstenite`](https://github.com/snapview/tokio-tungstenite) - the simplest way to get started.
 - [`axum`](https://github.com/tokio-rs/axum) - ergonomic and modular web framework built with Tokio, Tower, and Hyper
 - [`actix-web`](https://github.com/actix/actix-web) - Work in progress at [#22](https://github.com/gbaranski/ezsockets/issues/22)
