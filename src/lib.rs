@@ -6,6 +6,7 @@
 //! Refer to [`client`] or [`server`] module for detailed implementation guides.
 
 mod socket;
+mod tungstenite_common;
 
 pub use socket::CloseCode;
 pub use socket::CloseFrame;

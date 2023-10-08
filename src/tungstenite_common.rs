@@ -1,6 +1,3 @@
-//! The `tungstenite_common` feature must be enabled in order to use this module.
-//!
-
 use crate::socket::RawMessage;
 use crate::CloseCode;
 use crate::CloseFrame;

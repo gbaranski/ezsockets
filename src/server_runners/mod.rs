@@ -5,8 +5,5 @@ cfg_if::cfg_if! {
     }
 }
 
-#[cfg(feature = "tokio-tungstenite")]
+#[cfg(feature = "tungstenite")]
 pub mod tungstenite;
-
-#[cfg(feature = "tungstenite_common")]
-pub mod tungstenite_common;
