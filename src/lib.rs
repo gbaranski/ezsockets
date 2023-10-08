@@ -5,12 +5,7 @@
 //!
 //! Refer to [`client`] or [`server`] module for detailed implementation guides.
 
-mod client_connectors;
-mod server_runners;
 mod socket;
-
-pub use client_connectors::*;
-pub use server_runners::*;
 
 pub use socket::CloseCode;
 pub use socket::CloseFrame;
@@ -26,6 +21,9 @@ pub use socket::Stream;
 cfg_if::cfg_if! {
     if #[cfg(feature = "client")] {
         pub mod client;
+        mod client_connectors;
+
+        pub use client_connectors::*;
 
         pub use client::connect;
         pub use client::connect_with;
@@ -39,6 +37,9 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "server")] {
         pub mod server;
         pub mod session;
+        mod server_runners;
+
+        pub use server_runners::*;
 
         pub use server::Server;
         pub use server::ServerExt;
