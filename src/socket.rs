@@ -1,13 +1,16 @@
 use futures::lock::Mutex;
 use futures::{FutureExt, SinkExt, StreamExt, TryStreamExt};
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
-use std::{
-    marker::PhantomData,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::time::Duration;
 use tokio_tungstenite_wasm::Error as WSError;
+
+#[cfg(not(target_family = "wasm"))]
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+#[cfg(target_family = "wasm")]
+use wasmtimer::std::{Instant, SystemTime, UNIX_EPOCH};
 
 /// Wrapper trait for `Fn(Duration) -> RawMessage`.
 pub trait SocketHeartbeatPingFn: Fn(Duration) -> RawMessage + Sync + Send {}
@@ -652,7 +655,7 @@ async fn handle_heartbeat_sleep_elapsed(
 
     // send ping
     let timestamp = SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+        .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     if sink
         .send_raw(InRawMessage::new((config.heartbeat_ping_msg_fn)(timestamp)))

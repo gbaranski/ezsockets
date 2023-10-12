@@ -1,0 +1,18 @@
+[package]
+name = "ezsockets-chat-client-wasm"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1.52"
+console_error_panic_hook = "0.1"
+ezsockets = { path = "../../", default-features = false, features = ["wasm_client"] }
+tracing = "0.1.32"
+tracing-subscriber = "0.3.9"
+tracing-wasm = { version = "0.2" }
+url = "2.2.2"
+wasm-bindgen = { version = "0.2" }
+wasm-bindgen-futures = { version = "0.4" }
+wasmtimer = "0.2.0"
