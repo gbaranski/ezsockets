@@ -1,4 +1,55 @@
 use crate::client::{ClientConfig, ClientConnector};
+use crate::socket::{CloseFrame, Message, RawMessage};
+
+impl<'t> From<tokio_tungstenite_wasm::CloseFrame<'t>> for CloseFrame {
+    fn from(frame: tokio_tungstenite_wasm::CloseFrame) -> Self {
+        Self {
+            code: Into::<tungstenite::protocol::frame::coding::CloseCode>::into(Into::<u16>::into(frame.code)).into(),
+            reason: frame.reason.into(),
+        }
+    }
+}
+
+impl<'t> From<CloseFrame> for tokio_tungstenite_wasm::CloseFrame<'t> {
+    fn from(frame: CloseFrame) -> Self {
+        Self {
+            code: Into::<u16>::into(Into::<tungstenite::protocol::frame::coding::CloseCode>::into(frame.code)).into(),
+            reason: frame.reason.into(),
+        }
+    }
+}
+
+impl From<RawMessage> for tokio_tungstenite_wasm::Message {
+    fn from(message: RawMessage) -> Self {
+        match message {
+            RawMessage::Text(text) => Self::Text(text),
+            RawMessage::Binary(bytes) => Self::Binary(bytes),
+            RawMessage::Ping(_) => Self::Close(None),
+            RawMessage::Pong(_) => Self::Close(None),
+            RawMessage::Close(frame) => Self::Close(frame.map(CloseFrame::into)),
+        }
+    }
+}
+
+impl From<tokio_tungstenite_wasm::Message> for RawMessage {
+    fn from(message: tokio_tungstenite_wasm::Message) -> Self {
+        match message {
+            tokio_tungstenite_wasm::Message::Text(text) => Self::Text(text),
+            tokio_tungstenite_wasm::Message::Binary(bytes) => Self::Binary(bytes),
+            tokio_tungstenite_wasm::Message::Close(frame) => Self::Close(frame.map(CloseFrame::from)),
+        }
+    }
+}
+
+impl From<Message> for tokio_tungstenite_wasm::Message {
+    fn from(message: Message) -> Self {
+        match message {
+            Message::Text(text) => tokio_tungstenite_wasm::Message::Text(text),
+            Message::Binary(bytes) => tokio_tungstenite_wasm::Message::Binary(bytes),
+            Message::Close(frame) => tokio_tungstenite_wasm::Message::Close(frame.map(CloseFrame::into)),
+        }
+    }
+}
 
 /// Implementation of [`ClientConnector`] for tokio runtimes.
 #[derive(Clone)]

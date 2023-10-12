@@ -618,9 +618,9 @@ async fn socket_heartbeat(
         futures::pin_mut!(sleep);
         futures::select! {
             _ = sleep => {
-                let Some(next_sleep_duration) = handle_heartbeat_sleep_elapsed(&sink, &config, &last_alive) else {
+                let Some(next_sleep_duration) = handle_heartbeat_sleep_elapsed(&sink, &config, &last_alive).await else {
                     break;
-                }
+                };
                 sleep_duration = next_sleep_duration;
             }
             _ = &mut abort_receiver.recv().fuse() => break,
