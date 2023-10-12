@@ -40,7 +40,9 @@ impl From<tokio_tungstenite_wasm::Message> for RawMessage {
         match message {
             tokio_tungstenite_wasm::Message::Text(text) => Self::Text(text),
             tokio_tungstenite_wasm::Message::Binary(bytes) => Self::Binary(bytes),
-            tokio_tungstenite_wasm::Message::Close(frame) => Self::Close(frame.map(CloseFrame::from)),
+            tokio_tungstenite_wasm::Message::Close(frame) => {
+                Self::Close(frame.map(CloseFrame::from))
+            }
         }
     }
 }
@@ -50,7 +52,9 @@ impl From<Message> for tokio_tungstenite_wasm::Message {
         match message {
             Message::Text(text) => tokio_tungstenite_wasm::Message::Text(text),
             Message::Binary(bytes) => tokio_tungstenite_wasm::Message::Binary(bytes),
-            Message::Close(frame) => tokio_tungstenite_wasm::Message::Close(frame.map(CloseFrame::into)),
+            Message::Close(frame) => {
+                tokio_tungstenite_wasm::Message::Close(frame.map(CloseFrame::into))
+            }
         }
     }
 }
@@ -103,7 +107,7 @@ pub struct WebSocketStreamProxy {
     inner: fragile::Fragile<tokio_tungstenite_wasm::WebSocketStream>,
 }
 
-impl futures_util::Stream for WebSocketStreamProxy{
+impl futures_util::Stream for WebSocketStreamProxy {
     type Item = tokio_tungstenite_wasm::Result<tokio_tungstenite_wasm::Message>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -114,37 +118,31 @@ impl futures_util::Stream for WebSocketStreamProxy{
     }
 }
 
-impl futures_util::Sink<tokio_tungstenite_wasm::Message> for WebSocketStreamProxy{
+impl futures_util::Sink<tokio_tungstenite_wasm::Message> for WebSocketStreamProxy {
     type Error = tokio_tungstenite_wasm::Error;
 
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let inner = self.inner.get_mut();
         futures::pin_mut!(inner);
-        
+
         inner.poll_ready(cx)
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: tokio_tungstenite_wasm::Message) -> Result<(), Self::Error> {
+    fn start_send(
+        mut self: Pin<&mut Self>,
+        item: tokio_tungstenite_wasm::Message,
+    ) -> Result<(), Self::Error> {
         let inner = self.inner.get_mut();
         futures::pin_mut!(inner);
 
         inner.start_send(item)
     }
 
-    fn poll_flush(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Ok(()).into()
     }
 
-    fn poll_close(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let inner = self.inner.get_mut();
         futures::pin_mut!(inner);
 
@@ -158,15 +156,18 @@ async fn wasm_client_connect(
     // connect the websocket
     let (result_sender, result_receiver) = async_channel::bounded(1usize);
 
-    wasm_bindgen_futures::spawn_local(
-        async move {
-            let result = tokio_tungstenite_wasm::connect(request_url.as_str()).await;
-            result_sender.send_blocking(result.map(|websocket| fragile::Fragile::new(websocket))).unwrap();
-        }
-    );
+    wasm_bindgen_futures::spawn_local(async move {
+        let result = tokio_tungstenite_wasm::connect(request_url.as_str()).await;
+        result_sender
+            .send_blocking(result.map(|websocket| fragile::Fragile::new(websocket)))
+            .unwrap();
+    });
 
-    let websocket = result_receiver.recv().await.unwrap_or(Err(tokio_tungstenite_wasm::Error::ConnectionClosed))?;
+    let websocket = result_receiver
+        .recv()
+        .await
+        .unwrap_or(Err(tokio_tungstenite_wasm::Error::ConnectionClosed))?;
 
     // build proxy
-    Ok(WebSocketStreamProxy{ inner: websocket })
+    Ok(WebSocketStreamProxy { inner: websocket })
 }

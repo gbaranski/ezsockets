@@ -398,7 +398,10 @@ impl<E: ClientExt> Client<E> {
 pub async fn connect<E: ClientExt + 'static>(
     client_fn: impl FnOnce(Client<E>) -> E,
     config: ClientConfig,
-) -> (Client<E>, impl std::future::Future<Output = Result<(), Error>>) {
+) -> (
+    Client<E>,
+    impl std::future::Future<Output = Result<(), Error>>,
+) {
     let client_connector = crate::ClientConnectorTokio::default();
     let (handle, mut future) = connect_with(client_fn, config, client_connector);
     let future = async move {

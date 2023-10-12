@@ -616,7 +616,7 @@ async fn socket_heartbeat(
 
     loop {
         // It is better to use Sleep::reset(), but we can't do it here because fuse() consumes the sleep
-        // and we need futures::select to avoid depending on tokio.
+        // and we need futures::select since we can't use tokio on WASM targets.
         let sleep = wasmtimer::tokio::sleep(sleep_duration).fuse();
         futures::pin_mut!(sleep);
         futures::select! {

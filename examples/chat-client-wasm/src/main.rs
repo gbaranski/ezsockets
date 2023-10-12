@@ -35,16 +35,11 @@ async fn main() -> Result<(), wasm_bindgen::JsValue> {
     tracing_wasm::set_as_global_default();
 
     // make client
-    let config = ClientConfig::new("ws://localhost:8080/websocket")
-        .socket_config(
-            SocketConfig {
-                heartbeat: Duration::from_secs(5),
-                timeout: Duration::from_secs(10),
-                heartbeat_ping_msg_fn: Arc::new(|_t: Duration| {
-                    RawMessage::Binary("ping".into())
-                }),
-            }
-        );
+    let config = ClientConfig::new("ws://localhost:8080/websocket").socket_config(SocketConfig {
+        heartbeat: Duration::from_secs(5),
+        timeout: Duration::from_secs(10),
+        heartbeat_ping_msg_fn: Arc::new(|_t: Duration| RawMessage::Binary("ping".into())),
+    });
     let (client, mut handle) = ezsockets::connect_with(
         |_client| Client {},
         config,
@@ -52,21 +47,19 @@ async fn main() -> Result<(), wasm_bindgen::JsValue> {
     );
 
     // collect inputs
-    wasm_bindgen_futures::spawn_local(
-        async move {
-            loop {
-                let stdin = std::io::stdin();
-                let lines = stdin.lock().lines();
-                for line in lines {
-                    let line = line.unwrap();
-                    tracing::info!("sending {line}");
-                    client.text(line).unwrap();
-                }
-
-                wasmtimer::tokio::sleep(Duration::from_secs(1)).await;
+    wasm_bindgen_futures::spawn_local(async move {
+        loop {
+            let stdin = std::io::stdin();
+            let lines = stdin.lock().lines();
+            for line in lines {
+                let line = line.unwrap();
+                tracing::info!("sending {line}");
+                client.text(line).unwrap();
             }
+
+            wasmtimer::tokio::sleep(Duration::from_secs(1)).await;
         }
-    );
+    });
 
     handle.extract().await.unwrap().unwrap();
 
