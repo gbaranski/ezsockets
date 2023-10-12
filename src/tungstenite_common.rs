@@ -2,7 +2,6 @@ use crate::socket::RawMessage;
 use crate::CloseCode;
 use crate::CloseFrame;
 use crate::Message;
-use tokio_tungstenite::tungstenite;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
 
 impl<'t> From<tungstenite::protocol::CloseFrame<'t>> for CloseFrame {
