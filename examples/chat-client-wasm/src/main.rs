@@ -46,21 +46,9 @@ async fn main() -> Result<(), wasm_bindgen::JsValue> {
         ezsockets::ClientConnectorWasm::default(),
     );
 
-    // collect inputs
-    wasm_bindgen_futures::spawn_local(async move {
-        loop {
-            let stdin = std::io::stdin();
-            let lines = stdin.lock().lines();
-            for line in lines {
-                let line = line.unwrap();
-                tracing::info!("sending {line}");
-                client.text(line).unwrap();
-            }
+    // collect inputs: todo
 
-            wasmtimer::tokio::sleep(Duration::from_secs(1)).await;
-        }
-    });
-
+    // keep main alive until it is manually terminated
     handle.extract().await.unwrap().unwrap();
 
     Ok(())
