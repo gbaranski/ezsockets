@@ -9,17 +9,18 @@ repository = "https://github.com/gbaranski/ezsockets"
 license = "MIT"
 keywords = ["websocket", "networking", "async"]
 categories = ["asynchronous", "network-programming", "web-programming::websocket"]
+resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-channel = "1.9.0"
 async-trait = "0.1.52"
 atomic_enum = "0.2.0"
 base64 = "0.21.0"
 enfync = "0.1.0"
 futures = "0.3.21"
 http = "0.2.8"
-tokio = { version = "1.17.0", features = ["sync", "macros", "time"] }
 tracing = "0.1.31"
 tungstenite = "0.20.0"
 url = "2.2.2"
@@ -38,6 +39,12 @@ tokio-tungstenite-wasm = { version = "0.2.0", optional = true }
 
 tokio-rustls = { version = "0.24.1", optional = true }
 tokio-native-tls = { version = "0.3.1", optional = true }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { version = "1.17.0", features = ["sync", "macros", "time"] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasmtimer = "0.2.0"
 
 [features]
 default = ["native_client", "server"]

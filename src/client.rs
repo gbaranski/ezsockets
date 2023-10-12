@@ -58,17 +58,20 @@ use crate::Socket;
 use async_trait::async_trait;
 use base64::Engine;
 use enfync::Handle;
-use futures::{SinkExt, StreamExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 use http::header::HeaderName;
 use http::HeaderValue;
 use std::fmt;
 use std::future::Future;
 use std::time::Duration;
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
-use tokio_tungstenite::tungstenite;
 use tokio_tungstenite_wasm::Error as WSError;
 use url::Url;
+
+#[cfg(not(target_family = "wasm"))]
+use tokio::time::sleep;
+
+#[cfg(target_family = "wasm")]
+use wasmtimer::tokio::sleep;
 
 pub const DEFAULT_RECONNECT_INTERVAL: Duration = Duration::new(5, 0);
 
@@ -297,8 +300,8 @@ pub trait ClientConnector {
 /// An `ezsockets` client.
 #[derive(Debug)]
 pub struct Client<E: ClientExt> {
-    to_socket_sender: mpsc::UnboundedSender<InMessage>,
-    client_call_sender: mpsc::UnboundedSender<E::Call>,
+    to_socket_sender: async_channel::Sender<InMessage>,
+    client_call_sender: async_channel::Sender<E::Call>,
 }
 
 impl<E: ClientExt> Clone for Client<E> {
@@ -310,7 +313,7 @@ impl<E: ClientExt> Clone for Client<E> {
     }
 }
 
-impl<E: ClientExt> From<Client<E>> for mpsc::UnboundedSender<E::Call> {
+impl<E: ClientExt> From<Client<E>> for async_channel::Sender<E::Call> {
     fn from(client: Client<E>) -> Self {
         client.client_call_sender
     }
@@ -323,11 +326,11 @@ impl<E: ClientExt> Client<E> {
     pub fn text(
         &self,
         text: impl Into<String>,
-    ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
+    ) -> Result<MessageSignal, async_channel::SendError<InMessage>> {
         let inmessage = InMessage::new(Message::Text(text.into()));
         let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
         self.to_socket_sender
-            .send(inmessage)
+            .send_blocking(inmessage)
             .map(|_| inmessage_signal)
     }
 
@@ -337,19 +340,19 @@ impl<E: ClientExt> Client<E> {
     pub fn binary(
         &self,
         bytes: impl Into<Vec<u8>>,
-    ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
+    ) -> Result<MessageSignal, async_channel::SendError<InMessage>> {
         let inmessage = InMessage::new(Message::Binary(bytes.into()));
         let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
         self.to_socket_sender
-            .send(inmessage)
+            .send_blocking(inmessage)
             .map(|_| inmessage_signal)
     }
 
     /// Call a custom method on the Client.
     ///
     /// Refer to `ClientExt::on_call`.
-    pub fn call(&self, message: E::Call) -> Result<(), mpsc::error::SendError<E::Call>> {
-        self.client_call_sender.send(message)
+    pub fn call(&self, message: E::Call) -> Result<(), async_channel::SendError<E::Call>> {
+        self.client_call_sender.send_blocking(message)
     }
 
     /// Call a custom method on the Client, with a reply from the `ClientExt::on_call`.
@@ -357,15 +360,15 @@ impl<E: ClientExt> Client<E> {
     /// This works just as syntactic sugar for `Client::call(sender)`
     pub async fn call_with<R: fmt::Debug>(
         &self,
-        f: impl FnOnce(oneshot::Sender<R>) -> E::Call,
+        f: impl FnOnce(async_channel::Sender<R>) -> E::Call,
     ) -> Option<R> {
-        let (sender, receiver) = oneshot::channel();
+        let (sender, receiver) = async_channel::bounded(1usize);
         let call = f(sender);
 
-        let Ok(_) = self.client_call_sender.send(call) else {
+        let Ok(_) = self.client_call_sender.send(call).await else {
             return None;
         };
-        let Ok(result) = receiver.await else {
+        let Ok(result) = receiver.recv().await else {
             return None;
         };
         Some(result)
@@ -380,11 +383,11 @@ impl<E: ClientExt> Client<E> {
     pub fn close(
         &self,
         frame: Option<CloseFrame>,
-    ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
+    ) -> Result<MessageSignal, async_channel::SendError<InMessage>> {
         let inmessage = InMessage::new(Message::Close(frame));
         let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
         self.to_socket_sender
-            .send(inmessage)
+            .send_blocking(inmessage)
             .map(|_| inmessage_signal)
     }
 }
@@ -414,8 +417,8 @@ pub fn connect_with<E: ClientExt + 'static>(
     config: ClientConfig,
     client_connector: impl ClientConnector + Send + Sync + 'static,
 ) -> (Client<E>, enfync::PendingResult<Result<(), Error>>) {
-    let (to_socket_sender, mut to_socket_receiver) = mpsc::unbounded_channel();
-    let (client_call_sender, client_call_receiver) = mpsc::unbounded_channel();
+    let (to_socket_sender, mut to_socket_receiver) = async_channel::unbounded();
+    let (client_call_sender, client_call_receiver) = async_channel::unbounded();
     let handle = Client {
         to_socket_sender,
         client_call_sender,
@@ -453,8 +456,8 @@ pub fn connect_with<E: ClientExt + 'static>(
 
 struct ClientActor<E: ClientExt, C: ClientConnector> {
     client: E,
-    to_socket_receiver: mpsc::UnboundedReceiver<InMessage>,
-    client_call_receiver: mpsc::UnboundedReceiver<E::Call>,
+    to_socket_receiver: async_channel::Receiver<InMessage>,
+    client_call_receiver: async_channel::Receiver<E::Call>,
     socket: Socket,
     config: ClientConfig,
     client_connector: C,
@@ -463,8 +466,11 @@ struct ClientActor<E: ClientExt, C: ClientConnector> {
 impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
     async fn run(&mut self) -> Result<(), Error> {
         loop {
-            tokio::select! {
-                Some(inmessage) = self.to_socket_receiver.recv() => {
+            futures::select! {
+                res = self.to_socket_receiver.recv().fuse() => {
+                    let Ok(inmessage) = res else {
+                        break;
+                    };
                     let closed_self = matches!(inmessage.message, Some(Message::Close(_)));
                     if self.socket.send(inmessage).await.is_err() {
                         let result = self.socket.await_sink_close().await;
@@ -480,7 +486,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                                 // A) The connection was closed via the close protocol, so we will allow the stream to
                                 //    handle it.
                                 // B) We already tried and failed to submit another message, so now we are
-                                //    waiting for other parts of the tokio::select to shut us down.
+                                //    waiting for other parts of the select! to shut us down.
                                 // C) An IO error means the connection closed unexpectedly, so we can try to reconnect when
                                 //    the stream fails.
                             }
@@ -493,10 +499,13 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                         return Ok(())
                     }
                 }
-                Some(call) = self.client_call_receiver.recv() => {
+                res = self.client_call_receiver.recv().fuse() => {
+                    let Ok(call) = res else {
+                        break;
+                    };
                     self.client.on_call(call).await?;
                 }
-                result = self.socket.stream.recv() => {
+                result = self.socket.stream.recv().fuse() => {
                     match result {
                         Some(Ok(message)) => {
                              match message.to_owned() {
@@ -548,7 +557,6 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                         }
                     };
                 }
-                else => break,
             }
         }
 
@@ -561,7 +569,7 @@ async fn client_connect<E: ClientExt, Connector: ClientConnector>(
     max_attempts: usize,
     config: &ClientConfig,
     client_connector: &Connector,
-    to_socket_receiver: &mut mpsc::UnboundedReceiver<InMessage>,
+    to_socket_receiver: &mut async_channel::Receiver<InMessage>,
     client: &mut E,
 ) -> Result<Option<Socket>, Error> {
     for i in 1.. {
@@ -601,12 +609,16 @@ async fn client_connect<E: ClientExt, Connector: ClientConnector>(
 
         // Discard messages until either the connect interval passes, the socket receiver disconnects, or
         // the user sends a close message.
-        let sleep = tokio::time::sleep(config.reconnect_interval);
-        tokio::pin!(sleep);
+        let sleep = sleep(config.reconnect_interval).fuse();
+        futures::pin_mut!(sleep);
         loop {
-            tokio::select! {
-                _ = &mut sleep => break,
-                Some(inmessage) = to_socket_receiver.recv() => {
+            futures::select! {
+                _ = sleep => break,
+                res = to_socket_receiver.recv().fuse() => {
+                    let Ok(inmessage) = res else {
+                        tracing::warn!("client is dead, aborting connection attempts");
+                        return Err(Error::from("client died while trying to connect"));
+                    };
                     match &inmessage.message
                     {
                         Some(Message::Close(frame)) => {
@@ -618,10 +630,6 @@ async fn client_connect<E: ClientExt, Connector: ClientConnector>(
                             continue;
                         }
                     }
-                },
-                else => {
-                    tracing::warn!("client is dead, aborting connection attempts");
-                    return Err(Error::from("client died while trying to connect"));
                 },
             }
         }

@@ -26,7 +26,9 @@ cfg_if::cfg_if! {
 
         pub use client_connectors::*;
 
+        #[cfg(feature = "native_client")]
         pub use client::connect;
+
         pub use client::connect_with;
         pub use client::ClientConfig;
         pub use client::ClientExt;

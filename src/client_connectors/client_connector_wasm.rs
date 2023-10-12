@@ -37,7 +37,7 @@ impl ClientConnector for ClientConnectorWasm {
             panic!("client may not submit HTTP headers in WASM connection requests");
         }
         let request_url = config.connect_url();
-        let (socket, _) = tokio_tungstenite_wasm::connect(request_url).await?;
+        let socket = tokio_tungstenite_wasm::connect(request_url).await?;
         Ok(socket)
     }
 }

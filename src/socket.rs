@@ -1,4 +1,5 @@
-use futures::{SinkExt, StreamExt, TryStreamExt};
+use futures::lock::Mutex;
+use futures::{FutureExt, SinkExt, StreamExt, TryStreamExt};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -6,9 +7,6 @@ use std::{
     marker::PhantomData,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
-use tokio::sync::Mutex;
 use tokio_tungstenite_wasm::Error as WSError;
 
 /// Wrapper trait for `Fn(Duration) -> RawMessage`.
@@ -318,8 +316,8 @@ where
     M: From<RawMessage>,
     S: SinkExt<M, Error = WSError> + Unpin,
 {
-    receiver: mpsc::UnboundedReceiver<InRawMessage>,
-    abort_receiver: oneshot::Receiver<()>,
+    receiver: async_channel::Receiver<InRawMessage>,
+    abort_receiver: async_channel::Receiver<()>,
     sink: S,
     phantom: PhantomData<M>,
 }
@@ -331,8 +329,9 @@ where
 {
     async fn run(&mut self) -> Result<(), WSError> {
         loop {
-            tokio::select! {
-                Some(mut inmessage) = self.receiver.recv() => {
+            futures::select! {
+                res = self.receiver.recv().fuse() => {
+                    let Ok(mut inmessage) = res else { break; };
                     let Some(message) = inmessage.take_message() else {
                         continue;
                     };
@@ -346,10 +345,10 @@ where
                         }
                     }
                 },
-                Ok(()) = &mut self.abort_receiver => {
+                _ = &mut self.abort_receiver.recv().fuse() => {
                     break;
                 },
-                else => {
+                complete => {
                     break;
                 }
             }
@@ -360,20 +359,20 @@ where
 
 #[derive(Debug, Clone)]
 pub struct Sink {
-    sender: mpsc::UnboundedSender<InRawMessage>,
+    sender: async_channel::Sender<InRawMessage>,
 }
 
 impl Sink {
     fn new<M, S>(
         sink: S,
-        abort_receiver: oneshot::Receiver<()>,
+        abort_receiver: async_channel::Receiver<()>,
         handle: impl enfync::Handle,
     ) -> (enfync::PendingResult<Result<(), WSError>>, Self)
     where
         M: From<RawMessage> + Send + 'static,
         S: SinkExt<M, Error = WSError> + Unpin + Send + 'static,
     {
-        let (sender, receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = async_channel::unbounded();
         let mut actor = SinkActor {
             receiver,
             abort_receiver,
@@ -391,15 +390,15 @@ impl Sink {
     pub async fn send(
         &self,
         inmessage: InMessage,
-    ) -> Result<(), mpsc::error::SendError<InRawMessage>> {
-        self.sender.send(inmessage.into())
+    ) -> Result<(), async_channel::SendError<InRawMessage>> {
+        self.sender.send(inmessage.into()).await
     }
 
     pub(crate) async fn send_raw(
         &self,
         inmessage: InRawMessage,
-    ) -> Result<(), mpsc::error::SendError<InRawMessage>> {
-        self.sender.send(inmessage)
+    ) -> Result<(), async_channel::SendError<InRawMessage>> {
+        self.sender.send(inmessage).await
     }
 }
 
@@ -409,7 +408,7 @@ where
     M: Into<RawMessage>,
     S: StreamExt<Item = Result<M, WSError>> + Unpin,
 {
-    sender: mpsc::UnboundedSender<Result<Message, WSError>>,
+    sender: async_channel::Sender<Result<Message, WSError>>,
     stream: S,
     last_alive: Arc<Mutex<Instant>>,
 }
@@ -452,7 +451,7 @@ where
                 }),
                 Err(err) => Err(err), // maybe early return here?
             };
-            if self.sender.send(message).is_err() {
+            if self.sender.send(message).await.is_err() {
                 // In websockets, you always echo a close frame received from your connection partner back to them.
                 // This means a normal close sequence will always end with the following line emitted by the socket of
                 // the client/server that initiated the close sequence (in response to the close frame echoed by their
@@ -470,7 +469,7 @@ where
 
 #[derive(Debug)]
 pub struct Stream {
-    receiver: mpsc::UnboundedReceiver<Result<Message, WSError>>,
+    receiver: async_channel::Receiver<Result<Message, WSError>>,
 }
 
 impl Stream {
@@ -483,7 +482,7 @@ impl Stream {
         M: Into<RawMessage> + std::fmt::Debug + Send + 'static,
         S: StreamExt<Item = Result<M, WSError>> + Unpin + Send + 'static,
     {
-        let (sender, receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = async_channel::unbounded();
         let actor = StreamActor {
             sender,
             stream,
@@ -495,7 +494,7 @@ impl Stream {
     }
 
     pub async fn recv(&mut self) -> Option<Result<Message, WSError>> {
-        self.receiver.recv().await
+        self.receiver.recv().await.ok()
     }
 }
 
@@ -503,7 +502,7 @@ impl Stream {
 pub struct Socket {
     pub sink: Sink,
     pub stream: Stream,
-    sink_result_receiver: Option<oneshot::Receiver<Result<(), WSError>>>,
+    sink_result_receiver: Option<async_channel::Receiver<Result<(), WSError>>>,
 }
 
 impl Socket {
@@ -520,18 +519,18 @@ impl Socket {
         let last_alive = Instant::now();
         let last_alive = Arc::new(Mutex::new(last_alive));
         let (sink, stream) = socket.sink_err_into().err_into().split();
-        let (sink_abort_sender, sink_abort_receiver) = oneshot::channel();
+        let (sink_abort_sender, sink_abort_receiver) = async_channel::bounded(1usize);
         let ((mut sink_future, sink), (mut stream_future, stream)) = (
             Sink::new(sink, sink_abort_receiver, handle.clone()),
             Stream::new(stream, last_alive.clone(), handle.clone()),
         );
-        let (hearbeat_abort_sender, hearbeat_abort_receiver) = oneshot::channel();
+        let (hearbeat_abort_sender, hearbeat_abort_receiver) = async_channel::bounded(1usize);
         let sink_clone = sink.clone();
         handle.spawn(async move {
             socket_heartbeat(sink_clone, config, hearbeat_abort_receiver, last_alive).await
         });
 
-        let (sink_result_sender, sink_result_receiver) = oneshot::channel();
+        let (sink_result_sender, sink_result_receiver) = async_channel::bounded(1usize);
         handle.spawn(async move {
             let _ = stream_future.extract().await;
             let _ = sink_abort_sender.send(());
@@ -554,14 +553,14 @@ impl Socket {
     pub async fn send(
         &self,
         message: InMessage,
-    ) -> Result<(), mpsc::error::SendError<InRawMessage>> {
+    ) -> Result<(), async_channel::SendError<InRawMessage>> {
         self.sink.send(message).await
     }
 
     pub async fn send_raw(
         &self,
         message: InRawMessage,
-    ) -> Result<(), mpsc::error::SendError<InRawMessage>> {
+    ) -> Result<(), async_channel::SendError<InRawMessage>> {
         self.sink.send_raw(message).await
     }
 
@@ -574,15 +573,17 @@ impl Socket {
             return Err(WSError::AlreadyClosed);
         };
         sink_result_receiver
+            .recv()
             .await
             .unwrap_or(Err(WSError::AlreadyClosed))
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 async fn socket_heartbeat(
     sink: Sink,
     config: SocketConfig,
-    mut abort_receiver: oneshot::Receiver<()>,
+    abort_receiver: async_channel::Receiver<()>,
     last_alive: Arc<Mutex<Instant>>,
 ) {
     let sleep = tokio::time::sleep(config.heartbeat);
@@ -591,39 +592,75 @@ async fn socket_heartbeat(
     loop {
         tokio::select! {
             _ = &mut sleep => {
-                let elapsed_since_last_alive = last_alive.lock().await.elapsed();
-                if elapsed_since_last_alive > config.timeout {
-                    tracing::info!("closing connection due to timeout");
-                    let _ = sink
-                        .send_raw(InRawMessage::new(RawMessage::Close(Some(CloseFrame {
-                            code: CloseCode::Normal,
-                            reason: String::from("remote partner is inactive"),
-                        }))))
-                        .await;
-                    return;
-                } else if elapsed_since_last_alive < config.heartbeat {
-                    // todo: this branch will needlessly fire at least once per heartbeat for idle connections since
-                    //       Pongs arrive after some delay
-                    sleep.as_mut().reset(
-                        tokio::time::Instant::now() + config.heartbeat.saturating_sub(elapsed_since_last_alive)
-                    );
-                    continue;
-                } else {
-                    sleep.as_mut().reset(tokio::time::Instant::now() + config.heartbeat);
-                }
-                let timestamp = SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default();
-                if sink
-                    .send_raw(InRawMessage::new((config.heartbeat_ping_msg_fn)(timestamp)))
-                    .await
-                    .is_err()
-                {
+                let Some(next_sleep_duration) = handle_heartbeat_sleep_elapsed(&sink, &config, &last_alive).await else {
                     break;
-                }
+                };
+                sleep.as_mut().reset(tokio::time::Instant::now() + next_sleep_duration);
             }
-            _ = &mut abort_receiver => break,
-            else => break,
+            _ = &mut abort_receiver.recv() => break,
         }
     }
+}
+
+#[cfg(target_family = "wasm")]
+async fn socket_heartbeat(
+    sink: Sink,
+    config: SocketConfig,
+    abort_receiver: async_channel::Receiver<()>,
+    last_alive: Arc<Mutex<Instant>>,
+) {
+    let mut sleep_duration = config.heartbeat;
+
+    loop {
+        // It is better to use Sleep::reset(), but we can't do it here because fuse() consumes the sleep
+        // and we need futures::select to avoid depending on tokio.
+        let sleep = wasmtimer::tokio::sleep(sleep_duration).fuse();
+        futures::pin_mut!(sleep);
+        futures::select! {
+            _ = sleep => {
+                let Some(next_sleep_duration) = handle_heartbeat_sleep_elapsed(&sink, &config, &last_alive) else {
+                    break;
+                }
+                sleep_duration = next_sleep_duration;
+            }
+            _ = &mut abort_receiver.recv().fuse() => break,
+        }
+    }
+}
+
+async fn handle_heartbeat_sleep_elapsed(
+    sink: &Sink,
+    config: &SocketConfig,
+    last_alive: &Arc<Mutex<Instant>>,
+) -> Option<Duration> {
+    // check last alive
+    let elapsed_since_last_alive = last_alive.lock().await.elapsed();
+    if elapsed_since_last_alive > config.timeout {
+        tracing::info!("closing connection due to timeout");
+        let _ = sink
+            .send_raw(InRawMessage::new(RawMessage::Close(Some(CloseFrame {
+                code: CloseCode::Normal,
+                reason: String::from("remote partner is inactive"),
+            }))))
+            .await;
+        return None;
+    } else if elapsed_since_last_alive < config.heartbeat {
+        // todo: this branch will needlessly fire at least once per heartbeat for idle connections since
+        //       Pongs arrive after some delay
+        return Some(config.heartbeat.saturating_sub(elapsed_since_last_alive));
+    }
+
+    // send ping
+    let timestamp = SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    if sink
+        .send_raw(InRawMessage::new((config.heartbeat_ping_msg_fn)(timestamp)))
+        .await
+        .is_err()
+    {
+        return None;
+    }
+
+    Some(config.heartbeat)
 }
