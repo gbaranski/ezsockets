@@ -35,10 +35,11 @@ async fn main() -> Result<(), wasm_bindgen::JsValue> {
     tracing_wasm::set_as_global_default();
 
     // make client
+    // - note: we use a hacky custom Ping/Pong protocol to keep the client alive (see the 'chat-server' example
+    //         for the Ping side via SessionExt::on_binary())
     let config = ClientConfig::new("ws://localhost:8080/websocket").socket_config(SocketConfig {
-        heartbeat: Duration::from_secs(5),
-        timeout: Duration::from_secs(10),
         heartbeat_ping_msg_fn: Arc::new(|_t: Duration| RawMessage::Binary("ping".into())),
+        ..Default::default()
     });
     let (client, mut handle) = ezsockets::connect_with(
         |_client| Client {},

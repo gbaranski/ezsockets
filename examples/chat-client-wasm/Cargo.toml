@@ -9,8 +9,8 @@ console_error_panic_hook = "0.1"
 ezsockets = { path = "../../", default-features = false, features = ["wasm_client"] }
 tracing = "0.1.32"
 tracing-subscriber = "0.3.9"
-tracing-wasm = { version = "0.2" }
+tracing-wasm = "0.2"
 url = "2.2.2"
-wasm-bindgen = { version = "0.2" }
-wasm-bindgen-futures = { version = "0.4" }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
 wasmtimer = "0.2.0"

@@ -171,7 +171,7 @@ impl ezsockets::SessionExt for SessionActor {
     }
 
     async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
-        // echo bytes back (we use this for a hacky ping/pong protocol for the client demo)
+        // echo bytes back (we use this for a hacky ping/pong protocol for the wasm client demo)
         tracing::info!("echoing bytes: {bytes:?}");
         self.session.binary("pong".as_bytes())?;
         Ok(())

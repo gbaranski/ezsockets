@@ -159,7 +159,6 @@ impl futures_util::Sink<tokio_tungstenite_wasm::Message> for WebSocketStreamProx
 async fn wasm_client_connect(
     request_url: String,
 ) -> Result<WebSocketStreamProxy, tokio_tungstenite_wasm::Error> {
-    // connect the websocket
     let (result_sender, result_receiver) = async_channel::bounded(1usize);
 
     wasm_bindgen_futures::spawn_local(async move {
@@ -174,6 +173,5 @@ async fn wasm_client_connect(
         .await
         .unwrap_or(Err(tokio_tungstenite_wasm::Error::ConnectionClosed))?;
 
-    // build proxy
     Ok(WebSocketStreamProxy { inner: websocket })
 }

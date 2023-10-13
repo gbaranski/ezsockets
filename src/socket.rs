@@ -334,7 +334,9 @@ where
         loop {
             futures::select! {
                 res = self.receiver.recv().fuse() => {
-                    let Ok(mut inmessage) = res else { break; };
+                    let Ok(mut inmessage) = res else {
+                        break;
+                    };
                     let Some(message) = inmessage.take_message() else {
                         continue;
                     };
@@ -351,9 +353,6 @@ where
                 _ = &mut self.abort_receiver.recv().fuse() => {
                     break;
                 },
-                complete => {
-                    break;
-                }
             }
         }
         Ok(())
