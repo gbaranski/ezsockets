@@ -55,7 +55,7 @@ wasmtimer = "0.2.0"
 default = ["native_client", "server"]
 
 client = ["tokio-tungstenite-wasm"]
-native_client = ["client", "tokio/rt"]
+native_client = ["client", "tokio/rt", "tokio-tungstenite"]
 wasm_client = ["client", "fragile"]
 
 server = ["tokio-tungstenite", "tokio-tungstenite-wasm", "tokio/rt"]
