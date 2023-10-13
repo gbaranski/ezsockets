@@ -28,8 +28,14 @@ impl From<RawMessage> for tokio_tungstenite_wasm::Message {
         match message {
             RawMessage::Text(text) => Self::Text(text),
             RawMessage::Binary(bytes) => Self::Binary(bytes),
-            RawMessage::Ping(_) => Self::Close(None),
-            RawMessage::Pong(_) => Self::Close(None),
+            RawMessage::Ping(_) => Self::Close(Some(tokio_tungstenite_wasm::CloseFrame {
+                code: tokio_tungstenite_wasm::CloseCode::Abnormal,
+                reason: "raw pings not supported".into(),
+            })),
+            RawMessage::Pong(_) => Self::Close(Some(tokio_tungstenite_wasm::CloseFrame {
+                code: tokio_tungstenite_wasm::CloseCode::Abnormal,
+                reason: "raw pongs not supported".into(),
+            })),
             RawMessage::Close(frame) => Self::Close(frame.map(CloseFrame::into)),
         }
     }
