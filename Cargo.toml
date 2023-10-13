@@ -7,9 +7,8 @@ description = "WebSockets server & client made easy"
 readme = "README.md"
 repository = "https://github.com/gbaranski/ezsockets"
 license = "MIT"
-keywords = ["websocket", "networking", "async"]
+keywords = ["websocket", "networking", "async", "wasm"]
 categories = ["asynchronous", "network-programming", "web-programming::websocket"]
-resolver = "2"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -48,7 +47,7 @@ tokio = { version = "1.17.0", features = ["sync", "macros", "time"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
-wasm-bindgen-futures = { version = "0.4" }
+wasm-bindgen-futures = "0.4"
 wasmtimer = "0.2.0"
 
 [features]

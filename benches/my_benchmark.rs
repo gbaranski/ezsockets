@@ -54,7 +54,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
         ezsockets_server::run(listener).await;
     });
-    sleep(Duration::from_millis(100));
+    sleep(Duration::from_millis(1000));
     let mut client = tungstenite::connect(format!("ws://127.0.0.1:{}", port))
         .unwrap()
         .0;
@@ -63,9 +63,5 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     task.abort();
 }
 
-criterion_group! {
-    name = benches;
-    config = Criterion::default().sample_size(10);
-    targets = criterion_benchmark
-}
+criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);

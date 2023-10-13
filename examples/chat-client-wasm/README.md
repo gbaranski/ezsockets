@@ -1,3 +1,7 @@
-Install [wasm-server-runner] and use `cargo run --target wasm32-unknown-unknown` from in this directory.
+1. install [wasm-server-runner](https://github.com/jakobhellermann/wasm-server-runner)
+2. `cd` to this directory
+3. `cargo run --target wasm32-unknown-unknown`
+4. paste the address provided into a new browser window
+5. open the browser console to view the chat logs
 
-This demo does not currently have a way to pass messages into the socket, but you can see the console log to read messages from native clients.
+Note: This demo does not currently have a way to pass messages into the chat.
