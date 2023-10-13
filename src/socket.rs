@@ -535,9 +535,9 @@ impl Socket {
         let (sink_result_sender, sink_result_receiver) = async_channel::bounded(1usize);
         handle.spawn(async move {
             let _ = stream_future.extract().await;
-            let _ = sink_abort_sender.send(());
-            let _ = hearbeat_abort_sender.send(());
-            let _ = sink_result_sender.send(
+            let _ = sink_abort_sender.send_blocking(());
+            let _ = hearbeat_abort_sender.send_blocking(());
+            let _ = sink_result_sender.send_blocking(
                 sink_future
                     .extract()
                     .await
