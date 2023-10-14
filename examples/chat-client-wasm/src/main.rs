@@ -28,6 +28,7 @@ impl ezsockets::ClientExt for Client {
     }
 }
 
+#[cfg(target_family = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(main)]
 async fn main() -> Result<(), wasm_bindgen::JsValue> {
     // setup tracing
@@ -41,7 +42,7 @@ async fn main() -> Result<(), wasm_bindgen::JsValue> {
         heartbeat_ping_msg_fn: Arc::new(|_t: Duration| RawMessage::Binary("ping".into())),
         ..Default::default()
     });
-    let (client, mut handle) = ezsockets::connect_with(
+    let (_client, mut handle) = ezsockets::connect_with(
         |_client| Client {},
         config,
         ezsockets::ClientConnectorWasm::default(),
@@ -53,4 +54,9 @@ async fn main() -> Result<(), wasm_bindgen::JsValue> {
     handle.extract().await.unwrap().unwrap();
 
     Ok(())
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn main() {
+    unreachable!()
 }
