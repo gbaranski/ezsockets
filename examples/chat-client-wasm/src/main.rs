@@ -58,5 +58,6 @@ async fn main() -> Result<(), wasm_bindgen::JsValue> {
 
 #[cfg(not(target_family = "wasm"))]
 fn main() {
+    // need per-package targets https://github.com/rust-lang/cargo/issues/9406
     unreachable!()
 }
