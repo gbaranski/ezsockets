@@ -42,9 +42,10 @@ impl ezsockets::ServerExt for ChatServer {
     ) -> Result<Session, Option<CloseFrame>> {
         let id = (0..).find(|i| !self.sessions.contains_key(i)).unwrap_or(0);
         let session = Session::create(
-            |_handle| SessionActor {
+            |session_handle| SessionActor {
                 id,
                 server: self.handle.clone(),
+                session: session_handle,
                 room: DEFAULT_ROOM.to_string(),
             },
             id,
@@ -129,6 +130,7 @@ impl ezsockets::ServerExt for ChatServer {
 struct SessionActor {
     id: SessionID,
     server: Server<ChatServer>,
+    session: Session,
     room: String,
 }
 
@@ -168,8 +170,11 @@ impl ezsockets::SessionExt for SessionActor {
         Ok(())
     }
 
-    async fn on_binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
-        unimplemented!()
+    async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+        // echo bytes back (we use this for a hacky ping/pong protocol for the wasm client demo)
+        tracing::info!("echoing bytes: {bytes:?}");
+        self.session.binary("pong".as_bytes())?;
+        Ok(())
     }
 
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {

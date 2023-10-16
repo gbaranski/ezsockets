@@ -218,7 +218,7 @@ pub struct ChatClient {
 #[derive(Debug)]
 pub enum ChatClientMessage {
     Send(String),
-    Subscribe(oneshot::Sender<broadcast::Receiver<String>>),
+    Subscribe(async_channel::Sender<broadcast::Receiver<String>>),
 }
 
 impl ChatClient {
@@ -252,7 +252,7 @@ impl ezsockets::ClientExt for ChatClient {
                 let _ = self.handle.text(message).unwrap();
             }
             ChatClientMessage::Subscribe(respond_to) => {
-                respond_to.send(self.messages.subscribe()).unwrap()
+                respond_to.send(self.messages.subscribe()).await.unwrap()
             }
         }
         Ok(())
