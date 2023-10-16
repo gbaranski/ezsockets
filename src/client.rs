@@ -235,20 +235,41 @@ pub trait ClientExt: Send {
     /// Type the custom call - parameters passed to `on_call`.
     type Call: Send;
 
-    /// Handler for text messages from the server. Returning an error will force-close the client.
+    /// Handler for text messages from the server.
+    ///
+    /// Returning an error will force-close the client.
     async fn on_text(&mut self, text: String) -> Result<(), Error>;
-    /// Handler for binary messages from the server. Returning an error will force-close the client.
+    /// Handler for binary messages from the server.
+    ///
+    /// Returning an error will force-close the client.
     async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
-    /// Handler for custom calls from other parts from your program. Returning an error will force-close the client.
+    /// Handler for custom calls from other parts from your program.
+    ///
+    /// Returning an error will force-close the client.
+    ///
     /// This is useful for concurrency and polymorphism.
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
 
-    /// Called when the client successfully connected(or reconnected). Returned errors will be ignored.
+    /// Called when the client successfully connected (or reconnected).
+    ///
+    /// Returning an error will force-close the client.
     async fn on_connect(&mut self) -> Result<(), Error> {
         Ok(())
     }
 
-    /// Called when the connection is closed by the server. Returning an error will force-close the client.
+    /// Called when the client fails a connection/reconnection attempt.
+    ///
+    /// Returning an error will force-close the client.
+    ///
+    /// By default, the client will continue trying to connect.
+    /// Return [`ClientCloseMode::Close`] here to fully close instead.
+    async fn on_connect_fail(&mut self, _error: WSError) -> Result<ClientCloseMode, Error> {
+        Ok(ClientCloseMode::Reconnect)
+    }
+
+    /// Called when the connection is closed by the server.
+    ///
+    /// Returning an error will force-close the client.
     ///
     /// By default, the client will try to reconnect. Return [`ClientCloseMode::Close`] here to fully close instead.
     ///
@@ -258,6 +279,8 @@ pub trait ClientExt: Send {
     }
 
     /// Called when the connection is closed by the socket dying.
+    ///
+    /// Returning an error will force-close the client.
     ///
     /// By default, the client will try to reconnect. Return [`ClientCloseMode::Close`] here to fully close instead.
     ///
@@ -276,13 +299,12 @@ pub trait ClientExt: Send {
 pub trait ClientConnector {
     type Handle: enfync::Handle;
     type Message: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static;
-    type WSError: std::error::Error + Into<WSError>;
+    type WSError: std::error::Error + Into<WSError> + Send;
     type Socket: SinkExt<Self::Message, Error = Self::WSError>
         + StreamExt<Item = Result<Self::Message, Self::WSError>>
         + Unpin
         + Send
         + 'static;
-    type ConnectError: std::error::Error + Send;
 
     /// Get the connector's runtime handle.
     fn handle(&self) -> Self::Handle;
@@ -290,10 +312,7 @@ pub trait ClientConnector {
     /// Connect to a websocket server.
     ///
     /// Returns `Err` if the request is invalid.
-    async fn connect(
-        &self,
-        client_config: &ClientConfig,
-    ) -> Result<Self::Socket, Self::ConnectError>;
+    async fn connect(&self, client_config: &ClientConfig) -> Result<Self::Socket, Self::WSError>;
 }
 
 /// An `ezsockets` client.
@@ -497,7 +516,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                         }
                     }
                     if closed_self {
-                        tracing::trace!("client closed itself");
+                        tracing::debug!("client closed itself");
                         return Ok(())
                     }
                 }
@@ -514,7 +533,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                                 Message::Text(text) => self.client.on_text(text).await?,
                                 Message::Binary(bytes) => self.client.on_binary(bytes).await?,
                                 Message::Close(frame) => {
-                                    tracing::trace!("client closed by server");
+                                    tracing::debug!("client closed by server");
                                     match self.client.on_close(frame).await?
                                     {
                                         ClientCloseMode::Reconnect => {
@@ -539,7 +558,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                             tracing::warn!("connection error: {error}");
                         }
                         None => {
-                            tracing::trace!("client socket died");
+                            tracing::debug!("client socket died");
                             match self.client.on_disconnect().await?
                             {
                                 ClientCloseMode::Reconnect => {
@@ -581,10 +600,7 @@ async fn client_connect<E: ClientExt, Connector: ClientConnector>(
         match result {
             Ok(socket_impl) => {
                 tracing::info!("successfully connected");
-                if let Err(err) = client.on_connect().await {
-                    tracing::error!("calling on_connect() failed due to {}, closing client", err);
-                    return Err(err);
-                }
+                client.on_connect().await?;
                 let socket = Socket::new(
                     socket_impl,
                     config.socket_config.clone().unwrap_or_default(),
@@ -593,11 +609,16 @@ async fn client_connect<E: ClientExt, Connector: ClientConnector>(
                 return Ok(Some(socket));
             }
             Err(err) => {
-                tracing::warn!(
-                    "connecting failed due to {}, will retry in {}s",
-                    err,
-                    config.reconnect_interval.as_secs()
-                );
+                tracing::warn!("connecting failed due to {}", err);
+                match client.on_connect_fail(err.into()).await? {
+                    ClientCloseMode::Reconnect => {
+                        tracing::debug!("will retry in {}s", config.reconnect_interval.as_secs());
+                    }
+                    ClientCloseMode::Close => {
+                        tracing::debug!("client closed itself after a connection failure");
+                        return Ok(None);
+                    }
+                }
             }
         };
 
@@ -624,7 +645,7 @@ async fn client_connect<E: ClientExt, Connector: ClientConnector>(
                     match &inmessage.message
                     {
                         Some(Message::Close(frame)) => {
-                            tracing::trace!(?frame, "client closed itself while connecting");
+                            tracing::debug!(?frame, "client closed itself while connecting");
                             return Ok(None);
                         }
                         _ => {

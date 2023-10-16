@@ -84,7 +84,6 @@ impl ClientConnector for ClientConnectorWasm {
     type Message = tokio_tungstenite_wasm::Message;
     type WSError = tokio_tungstenite_wasm::Error;
     type Socket = WebSocketStreamProxy;
-    type ConnectError = tokio_tungstenite_wasm::Error;
 
     /// Get the connector's runtime handle.
     fn handle(&self) -> Self::Handle {
@@ -97,7 +96,7 @@ impl ClientConnector for ClientConnectorWasm {
     ///
     /// Panics if any headers were added to the client config. Websockets on browser does not support
     /// additional headers (use [`ClientConfig::query_parameter()`] instead).
-    async fn connect(&self, config: &ClientConfig) -> Result<Self::Socket, Self::ConnectError> {
+    async fn connect(&self, config: &ClientConfig) -> Result<Self::Socket, Self::WSError> {
         if config.headers().len() > 0 {
             panic!("client may not submit HTTP headers in WASM connection requests");
         }

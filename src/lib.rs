@@ -52,5 +52,7 @@ cfg_if::cfg_if! {
     }
 }
 
+pub use tokio_tungstenite_wasm::Error as WSError;
+
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Request = http::Request<()>;
