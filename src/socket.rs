@@ -112,6 +112,16 @@ pub enum CloseCode {
     /// to a different IP (when multiple targets exist), or reconnect to the same IP
     /// when a user has performed an action.
     Again,
+    #[doc(hidden)]
+    Tls,
+    #[doc(hidden)]
+    Reserved(u16),
+    #[doc(hidden)]
+    Iana(u16),
+    #[doc(hidden)]
+    Library(u16),
+    #[doc(hidden)]
+    Bad(u16),
 }
 
 impl From<CloseCode> for u16 {
@@ -131,17 +141,20 @@ impl From<CloseCode> for u16 {
             Error => 1011,
             Restart => 1012,
             Again => 1013,
+            Tls => 1015,
+            Reserved(code) => code,
+            Iana(code) => code,
+            Library(code) => code,
+            Bad(code) => code,
         }
     }
 }
 
-impl TryFrom<u16> for CloseCode {
-    type Error = u16;
-
-    fn try_from(code: u16) -> Result<Self, u16> {
+impl From<u16> for CloseCode {
+    fn from(code: u16) -> Self {
         use self::CloseCode::*;
 
-        Ok(match code {
+        match code {
             1000 => Normal,
             1001 => Away,
             1002 => Protocol,
@@ -155,10 +168,13 @@ impl TryFrom<u16> for CloseCode {
             1011 => Error,
             1012 => Restart,
             1013 => Again,
-            code => {
-                return Err(code);
-            }
-        })
+            1015 => Tls,
+            1..=999 => Bad(code),
+            1016..=2999 => Reserved(code),
+            3000..=3999 => Iana(code),
+            4000..=4999 => Library(code),
+            _ => Bad(code),
+        }
     }
 }
 

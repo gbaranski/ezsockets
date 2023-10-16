@@ -38,6 +38,11 @@ impl From<CloseCode> for TungsteniteCloseCode {
             CloseCode::Error => Self::Error,
             CloseCode::Restart => Self::Restart,
             CloseCode::Again => Self::Again,
+            CloseCode::Tls => Self::Tls,
+            CloseCode::Reserved(code) => Self::Reserved(code),
+            CloseCode::Iana(code) => Self::Iana(code),
+            CloseCode::Library(code) => Self::Library(code),
+            CloseCode::Bad(code) => Self::Bad(code),
         }
     }
 }
@@ -58,7 +63,11 @@ impl From<TungsteniteCloseCode> for CloseCode {
             TungsteniteCloseCode::Error => Self::Error,
             TungsteniteCloseCode::Restart => Self::Restart,
             TungsteniteCloseCode::Again => Self::Again,
-            code => unimplemented!("could not handle close code: {code:?}"),
+            TungsteniteCloseCode::Tls => Self::Tls,
+            TungsteniteCloseCode::Reserved(code) => Self::Reserved(code),
+            TungsteniteCloseCode::Iana(code) => Self::Iana(code),
+            TungsteniteCloseCode::Library(code) => Self::Library(code),
+            TungsteniteCloseCode::Bad(code) => Self::Bad(code),
         }
     }
 }
