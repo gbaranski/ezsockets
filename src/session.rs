@@ -159,7 +159,7 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     }
 
     /// Close the session. Returns an error if the session is already closed.
-    pub async fn close(
+    pub fn close(
         &self,
         frame: Option<CloseFrame>,
     ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
