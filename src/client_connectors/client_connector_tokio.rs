@@ -40,7 +40,6 @@ impl ClientConnector for ClientConnectorTokio {
     type Socket = tokio_tungstenite::WebSocketStream<
         tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
     >;
-    type ConnectError = tungstenite::error::Error;
 
     /// Get the connector's runtime handle.
     fn handle(&self) -> Self::Handle {
@@ -50,7 +49,7 @@ impl ClientConnector for ClientConnectorTokio {
     /// Connect to a websocket server.
     ///
     /// Returns `Err` if the request is invalid.
-    async fn connect(&self, config: &ClientConfig) -> Result<Self::Socket, Self::ConnectError> {
+    async fn connect(&self, config: &ClientConfig) -> Result<Self::Socket, Self::WSError> {
         let request = config.connect_http_request();
         let (socket, _) = tokio_tungstenite::connect_async(request).await?;
         Ok(socket)
