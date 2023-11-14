@@ -605,7 +605,7 @@ async fn client_connect<E: ClientExt, Connector: ClientConnector>(
                     Some(Message::Close(frame)) => {
                         tracing::debug!(?frame, "client closed itself while connecting");
                         return Ok(None);
-                    }
+                    },
                     _ => {
                         tracing::warn!("client is connecting, discarding message from user");
                         continue;
