@@ -610,7 +610,7 @@ async fn client_connect<E: ClientExt, Connector: ClientConnector>(
                         tracing::warn!("client is connecting, discarding message from user");
                         continue;
                     }
-                }
+                },
                 Err(async_channel::TryRecvError::Empty) => break,
                 Err(async_channel::TryRecvError::Closed) => {
                     tracing::warn!("client is dead, aborting connection attempts");
