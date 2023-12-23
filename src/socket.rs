@@ -527,7 +527,7 @@ impl Socket {
     pub fn new<M, E: std::error::Error, S>(
         socket: S,
         config: SocketConfig,
-        handle: impl enfync::Handle + Clone,
+        handle: impl enfync::Handle,
     ) -> Self
     where
         M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,

@@ -18,7 +18,7 @@ async-channel = "1.9.0"
 async-trait = "0.1.52"
 atomic_enum = "0.2.0"
 base64 = "0.21.0"
-enfync = "0.2.1"
+enfync = "0.1.0"
 futures = "0.3.21"
 futures-util = { version = "0.3.25", default-features = false }
 http = "0.2.8"

@@ -297,7 +297,7 @@ pub trait ClientExt: Send {
 /// `wasm_bindgen_futures::spawn_local()` for a WASM connector, etc.).
 #[async_trait]
 pub trait ClientConnector {
-    type Handle: enfync::Handle + Clone;
+    type Handle: enfync::Handle;
     type Message: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static;
     type WSError: std::error::Error + Into<WSError> + Send;
     type Socket: SinkExt<Self::Message, Error = Self::WSError>

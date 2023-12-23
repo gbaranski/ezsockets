@@ -3,7 +3,7 @@
 //! This module implements an axum-based websockets layer on top of tungstenite, as an alternative to `axum::extract::ws`
 //! which does not expose tungstenite types.
 
-#![deny(unreachable_pub)]
+#![deny(unreachable_pub, private_in_public)]
 #![allow(clippy::type_complexity)]
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg, doc_cfg))]
