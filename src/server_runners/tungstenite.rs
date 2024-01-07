@@ -49,9 +49,13 @@ use tokio::net::ToSocketAddrs;
 
 pub enum Acceptor {
     Plain,
+
     #[cfg(feature = "native-tls")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "native-tls")))]
     NativeTls(tokio_native_tls::TlsAcceptor),
+
     #[cfg(feature = "rustls")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rustls")))]
     Rustls(tokio_rustls::TlsAcceptor),
 }
 
