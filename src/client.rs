@@ -414,6 +414,7 @@ impl<E: ClientExt> Client<E> {
 /// - Requires feature `native_client`.
 /// - May only be invoked from within a tokio runtime.
 #[cfg(feature = "native_client")]
+#[cfg_attr(docsrs, doc(cfg(feature = "native_client")))]
 pub async fn connect<E: ClientExt + 'static>(
     client_fn: impl FnOnce(Client<E>) -> E,
     config: ClientConfig,

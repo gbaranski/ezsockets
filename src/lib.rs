@@ -5,6 +5,8 @@
 //!
 //! Refer to [`client`] or [`server`] module for detailed implementation guides.
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 mod socket;
 mod tungstenite_common;
 
@@ -21,7 +23,9 @@ pub use socket::Stream;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "client")] {
+        #[cfg_attr(docsrs, doc(cfg(feature = "client")))]
         pub mod client;
+        #[cfg_attr(docsrs, doc(cfg(feature = "client")))]
         mod client_connectors;
 
         pub use client_connectors::*;
@@ -38,10 +42,15 @@ cfg_if::cfg_if! {
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "server")] {
+        #[cfg_attr(docsrs, doc(cfg(feature = "server")))]
         pub mod server;
+        #[cfg_attr(docsrs, doc(cfg(feature = "server")))]
         pub mod session;
-        mod server_runners;
+        #[cfg(any(feature = "axum", feature = "tungstenite"))]
+        #[cfg_attr(docsrs, doc(cfg(feature = "server")))]
+        pub mod server_runners;
 
+        #[cfg(any(feature = "axum", feature = "tungstenite"))]
         pub use server_runners::*;
 
         pub use server::Server;
