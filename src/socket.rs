@@ -228,6 +228,16 @@ pub struct MessageSignal {
 }
 
 impl MessageSignal {
+    /// Makes a new `MessageSignal` that starts with the specified status.
+    ///
+    /// Useful for creating [`MessageStatus::Failed`] statuses without actually trying to send a message.
+    pub fn new(status: MessageStatus) -> Self {
+        let signal = Self::default();
+        signal.set(status);
+        signal
+    }
+
+    /// Reads the signal's [`MessageStatus`].
     pub fn status(&self) -> MessageStatus {
         match self.signal.load(Ordering::Acquire) {
             0u8 => MessageStatus::Sending,
@@ -236,8 +246,11 @@ impl MessageSignal {
         }
     }
 
-    pub(crate) fn set(&self, state: MessageStatus) {
-        match state {
+    /// Sets the signal's [`MessageStatus`].
+    ///
+    /// This is crate-private so clones of a signal in the wild cannot lie to each other.
+    pub(crate) fn set(&self, status: MessageStatus) {
+        match status {
             MessageStatus::Sending => self.signal.store(0u8, Ordering::Release),
             MessageStatus::Sent => self.signal.store(1u8, Ordering::Release),
             MessageStatus::Failed => self.signal.store(2u8, Ordering::Release),
