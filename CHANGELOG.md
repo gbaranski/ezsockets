@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.6.2
+
+- Add `MessageSignal::new()`.
+
+
 ## v0.6.1
 
 - Tighten cleanup guarantees for outgoing client messages in reconnect cycles.
