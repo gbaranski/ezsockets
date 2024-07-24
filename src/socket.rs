@@ -537,14 +537,14 @@ pub struct Socket {
 }
 
 impl Socket {
-    pub fn new<M, E: std::error::Error, S>(
+    pub fn new<M, E, S>(
         socket: S,
         config: SocketConfig,
         handle: impl enfync::Handle,
     ) -> Self
     where
         M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,
-        E: Into<WSError>,
+        E: Into<WSError> + std::error::Error,
         S: SinkExt<M, Error = E> + Unpin + StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
     {
         let last_alive = Instant::now();
@@ -628,7 +628,7 @@ async fn socket_heartbeat(
                 };
                 sleep.as_mut().reset(tokio::time::Instant::now() + next_sleep_duration);
             }
-            _ = &mut abort_receiver.recv() => break,
+            _ = abort_receiver.recv() => break,
         }
     }
 }
