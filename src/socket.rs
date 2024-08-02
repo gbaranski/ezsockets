@@ -537,11 +537,7 @@ pub struct Socket {
 }
 
 impl Socket {
-    pub fn new<M, E, S>(
-        socket: S,
-        config: SocketConfig,
-        handle: impl enfync::Handle,
-    ) -> Self
+    pub fn new<M, E, S>(socket: S, config: SocketConfig, handle: impl enfync::Handle) -> Self
     where
         M: Into<RawMessage> + From<RawMessage> + std::fmt::Debug + Send + 'static,
         E: Into<WSError> + std::error::Error,
