@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## v0.6.3
 
 - Allow users to use tokio v2.4.0 in their projects. See [#106](https://github.com/gbaranski/ezsockets/pull/106).
+- Return `CloseCode::Abnormal` from keepalive timeouts instead of `CloseCode::Normal`.
 
 
 ## v0.6.2
