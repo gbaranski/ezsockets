@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## v0.6.3
 
 - Allow users to use tokio v2.4.0 in their projects. See [#106](https://github.com/gbaranski/ezsockets/pull/106).
+- Fix DDOS by honest clients when servers check capacity *after* clients connect.
 
 
 ## v0.6.2
