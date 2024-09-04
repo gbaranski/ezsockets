@@ -73,7 +73,7 @@ impl<I: std::fmt::Display + Clone + Send, C: Send> Session<I, C> {
             closed_indicator: Arc::new(Mutex::new(Some(closed_receiver))),
         };
         let session = session_fn(handle.clone());
-        let mut actor = SessionActor::new(
+        let actor = SessionActor::new(
             session,
             session_id,
             to_socket_receiver,
@@ -82,6 +82,7 @@ impl<I: std::fmt::Display + Clone + Send, C: Send> Session<I, C> {
         );
 
         tokio::spawn(async move {
+            // Note: SessionActor::run consumes the actor, guaranteeing it is dropped before the close event is sent.
             let result = actor.run().await;
             closed_sender.send(result).unwrap_or_default();
         });
@@ -172,7 +173,7 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
 }
 
 pub(crate) struct SessionActor<E: SessionExt> {
-    pub extension: E,
+    extension: E,
     id: E::ID,
     to_socket_receiver: mpsc::UnboundedReceiver<InMessage>,
     session_call_receiver: mpsc::UnboundedReceiver<E::Call>,
@@ -196,7 +197,7 @@ impl<E: SessionExt> SessionActor<E> {
         }
     }
 
-    pub(crate) async fn run(&mut self) -> Result<Option<CloseFrame>, Error> {
+    pub(crate) async fn run(mut self) -> Result<Option<CloseFrame>, Error> {
         loop {
             tokio::select! {
                 biased;
