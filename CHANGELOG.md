@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.6.4
+
+- Guarantee the internal `SessionActor` is dropped before `ServerExt::on_disconnect` is called.
+
+
 ## v0.6.3
 
 - Allow users to use tokio v2.4.0 in their projects. See [#106](https://github.com/gbaranski/ezsockets/pull/106).
