@@ -666,7 +666,7 @@ async fn handle_heartbeat_sleep_elapsed(
         tracing::info!("closing connection due to timeout");
         let _ = sink
             .send_raw(InRawMessage::new(RawMessage::Close(Some(CloseFrame {
-                code: CloseCode::Normal,
+                code: CloseCode::Abnormal,
                 reason: String::from("remote partner is inactive"),
             }))))
             .await;

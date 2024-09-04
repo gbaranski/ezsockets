@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Allow users to use tokio v2.4.0 in their projects. See [#106](https://github.com/gbaranski/ezsockets/pull/106).
 - Force-close clients if they encounter an IO error, since an IO error might mean the client is hanging (e.g. after an IP address change) and should be reconstructed.
+- Return `CloseCode::Abnormal` from keepalive timeouts instead of `CloseCode::Normal`.
+- Fix DDOS by honest clients when servers check capacity *after* clients connect.
 
 
 ## v0.6.2

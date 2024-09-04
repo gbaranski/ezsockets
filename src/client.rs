@@ -568,6 +568,9 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                         match self.client.on_close(frame).await? {
                             ClientCloseMode::Reconnect => {
                                 std::mem::drop(socket);
+                                // Sleep so honest clients won't DDOS the server if it is at capacity and if
+                                // capacity is checked *after* clients connect.
+                                sleep(self.config.reconnect_interval).await;
                                 let Some(socket) = client_connect(
                                     self.config.max_reconnect_attempts,
                                     &self.config,
@@ -595,6 +598,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                 match self.client.on_disconnect().await? {
                     ClientCloseMode::Reconnect => {
                         std::mem::drop(socket);
+                        // Note: We don't sleep here unlike above because a disconnect is assumed to be a network error.
                         let Some(socket) = client_connect(
                             self.config.max_reconnect_attempts,
                             &self.config,
