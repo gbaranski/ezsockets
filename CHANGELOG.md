@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## v0.6.3
 
 - Allow users to use tokio v2.4.0 in their projects. See [#106](https://github.com/gbaranski/ezsockets/pull/106).
+- Force-close clients if they encounter an IO error, since an IO error might mean the client is hanging (e.g. after an IP address change) and should be reconstructed.
 
 
 ## v0.6.2

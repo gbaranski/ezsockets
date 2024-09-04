@@ -526,17 +526,18 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                 );
             }
             match result {
-                Err(WSError::ConnectionClosed)
-                | Err(WSError::AlreadyClosed)
-                | Err(WSError::Io(_))
-                | Err(WSError::Tls(_)) => {
+                Err(WSError::ConnectionClosed) | Err(WSError::AlreadyClosed) => {
                     // either:
                     // A) The connection was closed via the close protocol, so we will allow the stream to
                     //    handle it.
                     // B) We already tried and failed to submit another message, so now we are
                     //    waiting for other parts of the select! to shut us down.
-                    // C) An IO error means the connection closed unexpectedly, so we can try to reconnect when
-                    //    the stream fails.
+                }
+                Err(WSError::Io(_)) | Err(WSError::Tls(_)) => {
+                    // An IO error means the connection closed unexpectedly. We don't know if the stream is
+                    // hanging or if it will shut down, so we force-close the socket.
+                    tracing::warn!("force-closing client socket due to IO sink close error; connection might be hanging");
+                    return Ok(None);
                 }
                 Err(_) if !closed_self => {
                     return Err(Error::from("unexpected sink error, aborting client actor"))
