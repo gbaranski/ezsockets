@@ -536,6 +536,9 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                 Err(WSError::Io(_)) | Err(WSError::Tls(_)) => {
                     // An IO error means the connection closed unexpectedly. We don't know if the stream is
                     // hanging or if it will shut down, so we force-close the socket.
+                    //
+                    // There are edge cases where this erroneously closes the connection even though we'd rather
+                    // use auto-reconnect. TODO: isolate the error cases where force-closing is appropriate.
                     return Err(Error::from("encountered IO sink close error, force-closing client actor since connection \
                         might be hanging"));
                 }
