@@ -494,7 +494,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                     let Ok(inmessage) = res else {
                         break;
                     };
-                    socket_shuttle = Self::handle_outgoing_msg(socket, inmessage).await?;
+                    socket_shuttle = self.handle_outgoing_msg(socket, inmessage).await?;
                 }
                 res = self.client_call_receiver.recv().fuse() => {
                     let Ok(call) = res else {
@@ -513,6 +513,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
     }
 
     async fn handle_outgoing_msg(
+        &mut self,
         mut socket: Socket,
         inmessage: InMessage,
     ) -> Result<Option<Socket>, Error> {
@@ -526,21 +527,14 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                 );
             }
             match result {
-                Err(WSError::ConnectionClosed) | Err(WSError::AlreadyClosed) => {
-                    // either:
-                    // A) The connection was closed via the close protocol, so we will allow the stream to
-                    //    handle it.
-                    // B) We already tried and failed to submit another message, so now we are
-                    //    waiting for other parts of the select! to shut us down.
+                Err(WSError::ConnectionClosed) | Err(WSError::AlreadyClosed) if !closed_self => {
+                    tracing::debug!("client socket closed");
+                    return self.handle_disconnect(socket).await;
                 }
-                Err(WSError::Io(_)) | Err(WSError::Tls(_)) => {
-                    // An IO error means the connection closed unexpectedly. We don't know if the stream is
-                    // hanging or if it will shut down, so we force-close the socket.
-                    //
-                    // There are edge cases where this erroneously closes the connection even though we'd rather
-                    // use auto-reconnect. TODO: isolate the error cases where force-closing is appropriate.
-                    return Err(Error::from("encountered IO sink close error, force-closing client actor since connection \
-                        might be hanging"));
+                Err(WSError::Io(_)) | Err(WSError::Tls(_)) if !closed_self => {
+                    // An IO error means the connection closed due network conditions, so we can attempt reconnecting.
+                    tracing::debug!("client socket IO send error");
+                    return self.handle_disconnect(socket).await;
                 }
                 Err(_) if !closed_self => {
                     return Err(Error::from("unexpected sink error, aborting client actor"));
@@ -568,59 +562,64 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                     Message::Binary(bytes) => self.client.on_binary(bytes).await?,
                     Message::Close(frame) => {
                         tracing::debug!("client closed by server");
-                        match self.client.on_close(frame).await? {
-                            ClientCloseMode::Reconnect => {
-                                std::mem::drop(socket);
-                                // Sleep so honest clients won't DDOS the server if it is at capacity and if
-                                // capacity is checked *after* clients connect.
-                                sleep(self.config.reconnect_interval).await;
-                                let Some(socket) = client_connect(
-                                    self.config.max_reconnect_attempts,
-                                    &self.config,
-                                    &self.client_connector,
-                                    &mut self.to_socket_receiver,
-                                    &mut self.client,
-                                )
-                                .await?
-                                else {
-                                    return Ok(None);
-                                };
-                                return Ok(Some(socket));
-                            }
-                            ClientCloseMode::Close => return Ok(None),
-                        }
+                        return self.handle_close(frame, socket).await;
                     }
                 };
             }
             Some(Err(error)) => {
                 let error = Error::from(error);
                 tracing::warn!("connection error: {error}");
+                return self.handle_disconnect(socket).await;
             }
             None => {
                 tracing::debug!("client socket died");
-                match self.client.on_disconnect().await? {
-                    ClientCloseMode::Reconnect => {
-                        std::mem::drop(socket);
-                        // Note: We don't sleep here unlike above because a disconnect is assumed to be a network error.
-                        let Some(socket) = client_connect(
-                            self.config.max_reconnect_attempts,
-                            &self.config,
-                            &self.client_connector,
-                            &mut self.to_socket_receiver,
-                            &mut self.client,
-                        )
-                        .await?
-                        else {
-                            return Ok(None);
-                        };
-                        return Ok(Some(socket));
-                    }
-                    ClientCloseMode::Close => return Ok(None),
-                }
+                return self.handle_disconnect(socket).await;
             }
         }
 
         Ok(Some(socket))
+    }
+
+    async fn handle_close(
+        &mut self,
+        frame: Option<CloseFrame>,
+        socket: Socket,
+    ) -> Result<Option<Socket>, Error> {
+        match self.client.on_close(frame).await? {
+            ClientCloseMode::Reconnect => {
+                std::mem::drop(socket);
+                // Sleep so honest clients won't DDOS the server if it is at capacity and if
+                // capacity is checked *after* clients connect.
+                sleep(self.config.reconnect_interval).await;
+                client_connect(
+                    self.config.max_reconnect_attempts,
+                    &self.config,
+                    &self.client_connector,
+                    &mut self.to_socket_receiver,
+                    &mut self.client,
+                )
+                .await
+            }
+            ClientCloseMode::Close => Ok(None),
+        }
+    }
+
+    async fn handle_disconnect(&mut self, socket: Socket) -> Result<Option<Socket>, Error> {
+        match self.client.on_disconnect().await? {
+            ClientCloseMode::Reconnect => {
+                std::mem::drop(socket);
+                // Note: We don't sleep here because we assume the disconnect was spurious.
+                client_connect(
+                    self.config.max_reconnect_attempts,
+                    &self.config,
+                    &self.client_connector,
+                    &mut self.to_socket_receiver,
+                    &mut self.client,
+                )
+                .await
+            }
+            ClientCloseMode::Close => Ok(None),
+        }
     }
 }
 
