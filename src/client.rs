@@ -249,6 +249,14 @@ pub trait ClientExt: Send {
     ///
     /// This is useful for concurrency and polymorphism.
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
+    /// Handler for ping messages from the server.
+    ///
+    /// Returning an error will force-close the client.
+    async fn on_ping(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
+    /// Handler for pong MESSAGES from the server.
+    ///
+    /// Returning an error will force-close the client.
+    async fn on_pong(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
 
     /// Called when the client successfully connected (or reconnected).
     ///
@@ -360,6 +368,34 @@ impl<E: ClientExt> Client<E> {
         bytes: impl Into<Vec<u8>>,
     ) -> Result<MessageSignal, async_channel::SendError<InMessage>> {
         let inmessage = InMessage::new(Message::Binary(bytes.into()));
+        let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
+        self.to_socket_sender
+            .send_blocking(inmessage)
+            .map(|_| inmessage_signal)
+    }
+
+    /// Send a ping message to the server.
+    ///
+    /// Returns a `MessageSignal` which will report if sending succeeds/fails.
+    pub fn ping(
+        &self,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Result<MessageSignal, async_channel::SendError<InMessage>> {
+        let inmessage = InMessage::new(Message::Ping(bytes.into()));
+        let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
+        self.to_socket_sender
+            .send_blocking(inmessage)
+            .map(|_| inmessage_signal)
+    }
+
+    /// Send a pong message to the server.
+    ///
+    /// Returns a `MessageSignal` which will report if sending succeeds/fails.
+    pub fn pong(
+        &self,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Result<MessageSignal, async_channel::SendError<InMessage>> {
+        let inmessage = InMessage::new(Message::Pong(bytes.into()));
         let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
         self.to_socket_sender
             .send_blocking(inmessage)
@@ -560,6 +596,8 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                 match message.to_owned() {
                     Message::Text(text) => self.client.on_text(text).await?,
                     Message::Binary(bytes) => self.client.on_binary(bytes).await?,
+                    Message::Ping(bytes) => self.client.on_ping(bytes).await?,
+                    Message::Pong(bytes) => self.client.on_pong(bytes).await?,
                     Message::Close(frame) => {
                         tracing::debug!("client closed by server");
                         return self.handle_close(frame, socket).await;

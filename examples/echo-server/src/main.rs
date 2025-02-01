@@ -64,6 +64,14 @@ impl ezsockets::SessionExt for EchoSession {
         unimplemented!()
     }
 
+    async fn on_ping(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    async fn on_pong(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+        unimplemented!()
+    }
+
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error> {
         let () = call;
         Ok(())

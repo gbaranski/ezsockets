@@ -189,6 +189,8 @@ pub enum Message {
     Text(String),
     Binary(Vec<u8>),
     Close(Option<CloseFrame>),
+    Ping(Vec<u8>),
+    Pong(Vec<u8>),
 }
 
 #[derive(Debug, Clone)]
@@ -205,6 +207,8 @@ impl From<Message> for RawMessage {
         match message {
             Message::Text(text) => Self::Text(text),
             Message::Binary(bytes) => Self::Binary(bytes),
+            Message::Ping(bytes) => Self::Ping(bytes),
+            Message::Pong(bytes) => Self::Pong(bytes),
             Message::Close(frame) => Self::Close(frame.map(CloseFrame::from)),
         }
     }

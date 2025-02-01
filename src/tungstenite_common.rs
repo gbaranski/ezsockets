@@ -102,6 +102,8 @@ impl From<Message> for tungstenite::Message {
         match message {
             Message::Text(text) => tungstenite::Message::Text(text),
             Message::Binary(bytes) => tungstenite::Message::Binary(bytes),
+            Message::Ping(bytes) => tungstenite::Message::Ping(bytes),
+            Message::Pong(bytes) => tungstenite::Message::Pong(bytes),
             Message::Close(frame) => tungstenite::Message::Close(frame.map(CloseFrame::into)),
         }
     }
