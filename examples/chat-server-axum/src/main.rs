@@ -11,6 +11,7 @@ use ezsockets::Server;
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::net::SocketAddr;
+use tokio::net::TcpListener;
 
 type SessionID = u16;
 type Session = ezsockets::Session<SessionID, ()>;
@@ -123,10 +124,13 @@ async fn main() {
 
     tokio::spawn(async move {
         tracing::debug!("listening on {}", address);
-        axum::Server::bind(&address)
-            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-            .await
-            .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await
+        .unwrap();
     });
 
     let stdin = std::io::stdin();

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## WIP
+
+- Update to `axum` v0.8.
+
+
 ## v0.6.4
 
 - Guarantee the internal `SessionActor` is dropped before `ServerExt::on_disconnect` is called.
