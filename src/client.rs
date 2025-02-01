@@ -13,12 +13,12 @@
 //! impl ezsockets::ClientExt for Client {
 //!     type Call = ();
 //!
-//!     async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> {
+//!     async fn on_text(&mut self, text: ezsockets::Utf8Bytes) -> Result<(), ezsockets::Error> {
 //!         tracing::info!("received message: {text}");
 //!         Ok(())
 //!     }
 //!
-//!     async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
+//!     async fn on_binary(&mut self, bytes: ezsockets::Bytes) -> Result<(), ezsockets::Error> {
 //!         tracing::info!("received bytes: {bytes:?}");
 //!         Ok(())
 //!     }
@@ -57,6 +57,7 @@ use crate::Request;
 use crate::Socket;
 use async_trait::async_trait;
 use base64::Engine;
+use bytes::Bytes;
 use enfync::Handle;
 use futures::{FutureExt, SinkExt, StreamExt};
 use http::header::HeaderName;
@@ -64,6 +65,7 @@ use http::HeaderValue;
 use std::fmt;
 use std::time::Duration;
 use tokio_tungstenite_wasm::Error as WSError;
+use tungstenite::Utf8Bytes;
 use url::Url;
 
 #[cfg(not(target_family = "wasm"))]
@@ -238,11 +240,11 @@ pub trait ClientExt: Send {
     /// Handler for text messages from the server.
     ///
     /// Returning an error will force-close the client.
-    async fn on_text(&mut self, text: String) -> Result<(), Error>;
+    async fn on_text(&mut self, text: Utf8Bytes) -> Result<(), Error>;
     /// Handler for binary messages from the server.
     ///
     /// Returning an error will force-close the client.
-    async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
+    async fn on_binary(&mut self, bytes: Bytes) -> Result<(), Error>;
     /// Handler for custom calls from other parts from your program.
     ///
     /// Returning an error will force-close the client.
@@ -343,7 +345,7 @@ impl<E: ClientExt> Client<E> {
     /// Returns a `MessageSignal` which will report if sending succeeds/fails.
     pub fn text(
         &self,
-        text: impl Into<String>,
+        text: impl Into<Utf8Bytes>,
     ) -> Result<MessageSignal, async_channel::SendError<InMessage>> {
         let inmessage = InMessage::new(Message::Text(text.into()));
         let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
@@ -357,7 +359,7 @@ impl<E: ClientExt> Client<E> {
     /// Returns a `MessageSignal` which will report if sending succeeds/fails.
     pub fn binary(
         &self,
-        bytes: impl Into<Vec<u8>>,
+        bytes: impl Into<Bytes>,
     ) -> Result<MessageSignal, async_channel::SendError<InMessage>> {
         let inmessage = InMessage::new(Message::Binary(bytes.into()));
         let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction

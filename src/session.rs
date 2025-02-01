@@ -7,9 +7,11 @@ use crate::Error;
 use crate::Message;
 use crate::Socket;
 use async_trait::async_trait;
+use bytes::Bytes;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::Mutex;
+use tungstenite::Utf8Bytes;
 
 #[async_trait]
 pub trait SessionExt: Send {
@@ -21,9 +23,9 @@ pub trait SessionExt: Send {
     /// Returns ID of the session.
     fn id(&self) -> &Self::ID;
     /// Handler for text messages from the client. Returning an error will force-close the session.
-    async fn on_text(&mut self, text: String) -> Result<(), Error>;
+    async fn on_text(&mut self, text: Utf8Bytes) -> Result<(), Error>;
     /// Handler for binary messages from the client. Returning an error will force-close the session.
-    async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
+    async fn on_binary(&mut self, bytes: Bytes) -> Result<(), Error>;
     /// Handler for custom calls from other parts from your program. Returning an error will force-close the session.
     /// This is useful for concurrency and polymorphism.
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
@@ -115,7 +117,7 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     /// Sends a Text message to the server
     pub fn text(
         &self,
-        text: impl Into<String>,
+        text: impl Into<Utf8Bytes>,
     ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
         let inmessage = InMessage::new(Message::Text(text.into()));
         let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction
@@ -127,7 +129,7 @@ impl<I: std::fmt::Display + Clone, C> Session<I, C> {
     /// Sends a Binary message to the server
     pub fn binary(
         &self,
-        bytes: impl Into<Vec<u8>>,
+        bytes: impl Into<Bytes>,
     ) -> Result<MessageSignal, mpsc::error::SendError<InMessage>> {
         let inmessage = InMessage::new(Message::Binary(bytes.into()));
         let inmessage_signal = inmessage.clone_signal().unwrap(); //safety: always available on construction

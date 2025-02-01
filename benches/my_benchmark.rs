@@ -17,7 +17,7 @@ fn bench(b: &mut Bencher, client: &mut WebSocket<MaybeTlsStream<TcpStream>>) {
     b.iter(|| {
         let nonce = rng.gen::<u32>();
         let text = format!("Hello {}", nonce);
-        let message = tungstenite::Message::Text(text.clone());
+        let message = tungstenite::Message::Text(text.clone().into());
         client.send(message).unwrap();
 
         while let tungstenite::Message::Text(received_text) = client.read().unwrap() {

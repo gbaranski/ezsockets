@@ -143,7 +143,7 @@ impl ezsockets::SessionExt for SessionActor {
         &self.id
     }
 
-    async fn on_text(&mut self, text: String) -> Result<(), Error> {
+    async fn on_text(&mut self, text: ezsockets::Utf8Bytes) -> Result<(), Error> {
         tracing::info!("received: {text}");
         if text.starts_with('/') {
             let mut args = text.split_whitespace();
@@ -161,7 +161,7 @@ impl ezsockets::SessionExt for SessionActor {
         } else {
             self.server
                 .call(Message::Send {
-                    text,
+                    text: text.to_string(),
                     from: self.id,
                     room: self.room.clone(),
                 })
@@ -170,7 +170,7 @@ impl ezsockets::SessionExt for SessionActor {
         Ok(())
     }
 
-    async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+    async fn on_binary(&mut self, bytes: ezsockets::Bytes) -> Result<(), Error> {
         // echo bytes back (we use this for a hacky ping/pong protocol for the wasm client demo)
         tracing::info!("echoing bytes: {bytes:?}");
         self.session.binary("pong".as_bytes())?;

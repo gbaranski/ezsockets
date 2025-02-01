@@ -164,7 +164,7 @@ impl ezsockets::SessionExt for SessionActor {
         &self.id
     }
 
-    async fn on_text(&mut self, text: String) -> Result<(), Error> {
+    async fn on_text(&mut self, text: ezsockets::Utf8Bytes) -> Result<(), Error> {
         tracing::info!("received: {text}");
         if text.starts_with('/') {
             let mut args = text.split_whitespace();
@@ -187,7 +187,7 @@ impl ezsockets::SessionExt for SessionActor {
         } else {
             self.server
                 .call(Message::Send {
-                    text,
+                    text: text.to_string(),
                     from: self.id,
                     room: self.room.clone(),
                 })
@@ -196,7 +196,7 @@ impl ezsockets::SessionExt for SessionActor {
         Ok(())
     }
 
-    async fn on_binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
+    async fn on_binary(&mut self, _bytes: ezsockets::Bytes) -> Result<(), Error> {
         unimplemented!()
     }
 
@@ -235,13 +235,13 @@ impl ChatClient {
 impl ezsockets::ClientExt for ChatClient {
     type Call = ChatClientMessage;
 
-    async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> {
+    async fn on_text(&mut self, text: ezsockets::Utf8Bytes) -> Result<(), ezsockets::Error> {
         tracing::info!("received message: {text}");
-        let _ = self.messages.send(text);
+        let _ = self.messages.send(text.to_string());
         Ok(())
     }
 
-    async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
+    async fn on_binary(&mut self, bytes: ezsockets::Bytes) -> Result<(), ezsockets::Error> {
         tracing::info!("received bytes: {bytes:?}");
         Ok(())
     }

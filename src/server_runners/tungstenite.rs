@@ -8,8 +8,8 @@
 //! #   type ID = u16;
 //! #   type Call = ();
 //! #   fn id(&self) -> &Self::ID { unimplemented!() }
-//! #   async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> { unimplemented!() }
-//! #   async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! #   async fn on_text(&mut self, text: ezsockets::Utf8Bytes) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! #   async fn on_binary(&mut self, bytes: ezsockets::Bytes) -> Result<(), ezsockets::Error> { unimplemented!() }
 //! #   async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
 //! # }
 //! struct MyServer {}

@@ -12,12 +12,12 @@ struct Client {}
 impl ezsockets::ClientExt for Client {
     type Call = ();
 
-    async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> {
+    async fn on_text(&mut self, text: ezsockets::Utf8Bytes) -> Result<(), ezsockets::Error> {
         tracing::info!("received message: {text}");
         Ok(())
     }
 
-    async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
+    async fn on_binary(&mut self, bytes: ezsockets::Bytes) -> Result<(), ezsockets::Error> {
         tracing::info!("received bytes: {bytes:?}");
         Ok(())
     }

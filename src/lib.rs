@@ -21,6 +21,10 @@ pub use socket::Socket;
 pub use socket::SocketConfig;
 pub use socket::Stream;
 
+/// Re-exported from `tungstenite`.
+pub use ::tungstenite::Utf8Bytes;
+pub use bytes::Bytes;
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "client")] {
         #[cfg_attr(docsrs, doc(cfg(feature = "client")))]
