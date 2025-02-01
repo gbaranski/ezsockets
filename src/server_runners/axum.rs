@@ -64,11 +64,11 @@ use crate::socket::SocketConfig;
 use crate::Server;
 use crate::ServerExt;
 use crate::Socket;
-use async_trait::async_trait;
 use axum::extract::ConnectInfo;
-use axum::extract::FromRequest;
+use axum::extract::FromRequestParts;
 use axum::response::Response;
 use enfync::TryAdopt;
+use http::request::Parts;
 use std::net::SocketAddr;
 
 /// Extractor for establishing WebSocket connections.
@@ -95,26 +95,24 @@ impl Upgrade {
     }
 }
 
-#[async_trait]
-impl<S, B> FromRequest<S, B> for Upgrade
+impl<S> FromRequestParts<S> for Upgrade
 where
     S: Send + Sync,
-    B: Send + 'static,
 {
     type Rejection = WebSocketUpgradeRejection;
 
-    async fn from_request(req: http::Request<B>, state: &S) -> Result<Self, Self::Rejection> {
-        let ConnectInfo(address) = req
-            .extensions()
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let ConnectInfo(address) = parts
+            .extensions
             .get::<ConnectInfo<SocketAddr>>()
             .expect("Axum Server must be created with `axum::Router::into_make_service_with_connect_info::<SocketAddr, _>()`")
             .to_owned();
 
         let mut pure_req = crate::Request::builder()
-            .method(req.method())
-            .uri(req.uri())
-            .version(req.version());
-        for (k, v) in req.headers() {
+            .method(parts.method.clone())
+            .uri(parts.uri.clone())
+            .version(parts.version);
+        for (k, v) in parts.headers.iter() {
             pure_req = pure_req.header(k, v);
         }
         let Ok(pure_req) = pure_req.body(()) else {
@@ -122,7 +120,7 @@ where
         };
 
         Ok(Self {
-            ws: WebSocketUpgrade::from_request(req, state).await?,
+            ws: WebSocketUpgrade::from_request_parts(parts, state).await?,
             address,
             request: pure_req,
         })

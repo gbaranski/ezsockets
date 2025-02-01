@@ -12,6 +12,7 @@ use ezsockets::axum::Upgrade;
 use ezsockets::Server;
 use ezsockets::ServerExt;
 use std::net::SocketAddr;
+use tokio::net::TcpListener;
 
 async fn websocket_handler<E>(
     Extension(server): Extension<Server<E>>,
@@ -35,9 +36,12 @@ where
     let address = SocketAddr::from(([127, 0, 0, 1], 0));
 
     tracing::debug!("listening on {}", address);
-    let future =
-        axum::Server::bind(&address).serve(app.into_make_service_with_connect_info::<SocketAddr>());
-    let address = future.local_addr();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let future = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    );
+    let address = future.local_addr().unwrap();
     tokio::spawn(async move {
         future.await.unwrap();
     });
