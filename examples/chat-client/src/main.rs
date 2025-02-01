@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ezsockets::ClientConfig;
+use ezsockets::{ClientConfig, Error};
 use std::io::BufRead;
 
 struct Client {}
@@ -20,6 +20,16 @@ impl ezsockets::ClientExt for Client {
 
     async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
         let () = call;
+        Ok(())
+    }
+
+    async fn on_ping(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+        tracing::info!("received ping: {bytes:?}");
+        Ok(())
+    }
+
+    async fn on_pong(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+        tracing::info!("received pong: {bytes:?}");
         Ok(())
     }
 }

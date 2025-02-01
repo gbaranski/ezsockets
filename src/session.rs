@@ -24,6 +24,10 @@ pub trait SessionExt: Send {
     async fn on_text(&mut self, text: String) -> Result<(), Error>;
     /// Handler for binary messages from the client. Returning an error will force-close the session.
     async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
+    /// Handler for ping messages from the client. Returning an error will force-close the session.
+    async fn on_ping(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
+    /// Handler for pong messages from the client. Returning an error will force-close the session.
+    async fn on_pong(&mut self, bytes: Vec<u8>) -> Result<(), Error>;
     /// Handler for custom calls from other parts from your program. Returning an error will force-close the session.
     /// This is useful for concurrency and polymorphism.
     async fn on_call(&mut self, call: Self::Call) -> Result<(), Error>;
@@ -222,6 +226,8 @@ impl<E: SessionExt> SessionActor<E> {
                         Some(Ok(message)) => match message {
                             Message::Text(text) => self.extension.on_text(text).await?,
                             Message::Binary(bytes) => self.extension.on_binary(bytes).await?,
+                            Message::Ping(bytes) => self.extension.on_ping(bytes).await?,
+                            Message::Pong(bytes) => self.extension.on_pong(bytes).await?,
                             Message::Close(frame) => {
                                 // closed by client
                                 return Ok(frame.map(CloseFrame::from))

@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use async_trait::async_trait;
-use ezsockets::{ClientConfig, RawMessage, SocketConfig};
+use ezsockets::{ClientConfig, Error, RawMessage, SocketConfig};
 use std::io::BufRead;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,6 +24,16 @@ impl ezsockets::ClientExt for Client {
 
     async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> {
         let () = call;
+        Ok(())
+    }
+
+    async fn on_ping(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+        tracing::info!("received ping: {bytes:?}");
+        Ok(())
+    }
+
+    async fn on_pong(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+        tracing::info!("received pong: {bytes:?}");
         Ok(())
     }
 }
