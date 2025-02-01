@@ -101,11 +101,11 @@ impl ezsockets::SessionExt for CounterSession {
         unimplemented!()
     }
 
-    async fn on_ping(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+    async fn on_ping(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
         unimplemented!()
     }
 
-    async fn on_pong(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+    async fn on_pong(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
         unimplemented!()
     }
 
