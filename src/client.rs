@@ -28,12 +28,12 @@
 //!         Ok(())
 //!     }
 //!
-//!     async fn on_ping(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+//!     async fn on_ping(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
 //!         tracing::info!("received ping: {bytes:?}");
 //!         Ok(())
 //!     }
 //!
-//!     async fn on_pong(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
+//!     async fn on_pong(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
 //!         tracing::info!("received pong: {bytes:?}");
 //!         Ok(())
 //!     }
