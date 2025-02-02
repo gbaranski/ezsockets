@@ -183,7 +183,7 @@ impl From<u16> for CloseCode {
 #[derive(Debug, Clone)]
 pub struct CloseFrame {
     pub code: CloseCode,
-    pub reason: String,
+    pub reason: Utf8Bytes,
 }
 
 #[derive(Debug, Clone)]
@@ -669,7 +669,7 @@ async fn handle_heartbeat_sleep_elapsed(
         let _ = sink
             .send_raw(InRawMessage::new(RawMessage::Close(Some(CloseFrame {
                 code: CloseCode::Abnormal,
-                reason: String::from("remote partner is inactive"),
+                reason: "remote partner is inactive".into(),
             }))))
             .await;
         return None;

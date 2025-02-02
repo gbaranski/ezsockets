@@ -8,7 +8,7 @@ impl From<tungstenite::protocol::CloseFrame> for CloseFrame {
     fn from(frame: tungstenite::protocol::CloseFrame) -> Self {
         Self {
             code: frame.code.into(),
-            reason: frame.reason.to_string(),
+            reason: frame.reason,
         }
     }
 }

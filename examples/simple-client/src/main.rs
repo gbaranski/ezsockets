@@ -36,7 +36,7 @@ impl ezsockets::ClientExt for Client {
                     self.handle
                         .close(Some(CloseFrame {
                             code: CloseCode::Normal,
-                            reason: "adios!".to_string(),
+                            reason: "adios!".into(),
                         }))
                         .unwrap();
                     return Ok(());
