@@ -17,7 +17,7 @@ impl From<CloseFrame> for tungstenite::protocol::CloseFrame {
     fn from(frame: CloseFrame) -> Self {
         Self {
             code: frame.code.into(),
-            reason: frame.reason.into(),
+            reason: frame.reason,
         }
     }
 }
