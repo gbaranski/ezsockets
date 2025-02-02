@@ -217,7 +217,7 @@ impl<E: SessionExt> SessionActor<E> {
                 Some(call) = self.session_call_receiver.recv() => {
                     self.extension.on_call(call).await?;
                 }
-                message = self.socket.recv() => {
+                message = self.socket.recv_with_handle_ping() => {
                     match message {
                         Some(Ok(message)) => match message {
                             Message::Text(text) => self.extension.on_text(text).await?,
