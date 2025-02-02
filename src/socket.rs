@@ -4,11 +4,10 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio_tungstenite_wasm::Error as WSError;
+use tokio_tungstenite_wasm::{Error as WSError};
 
 #[cfg(not(target_family = "wasm"))]
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-
 #[cfg(target_family = "wasm")]
 use wasmtimer::std::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -439,7 +438,7 @@ where
     M: Into<RawMessage>,
     S: StreamExt<Item = Result<M, WSError>> + Unpin,
 {
-    sender: async_channel::Sender<Result<Message, WSError>>,
+    sender: async_channel::Sender<Result<RawMessage, WSError>>,
     stream: S,
     last_alive: Arc<Mutex<Instant>>,
 }
@@ -458,9 +457,12 @@ where
             let mut closing = false;
             let message = match result {
                 Ok(message) => Ok(match message {
-                    RawMessage::Text(text) => Message::Text(text),
-                    RawMessage::Binary(bytes) => Message::Binary(bytes),
-                    RawMessage::Ping(_bytes) => continue,
+                    RawMessage::Text(text) => RawMessage::Text(text),
+                    RawMessage::Binary(bytes) => RawMessage::Binary(bytes),
+                    RawMessage::Ping(bytes) => {
+                        tracing::trace!("Recieved ping");
+                        RawMessage::Pong(bytes)
+                    },
                     RawMessage::Pong(bytes) => {
                         if let Ok(bytes) = bytes.try_into() {
                             let bytes: [u8; 16] = bytes;
@@ -477,7 +479,7 @@ where
                     }
                     RawMessage::Close(frame) => {
                         closing = true;
-                        Message::Close(frame)
+                        RawMessage::Close(frame)
                     }
                 }),
                 Err(err) => Err(err), // maybe early return here?
@@ -500,7 +502,7 @@ where
 
 #[derive(Debug)]
 pub struct Stream {
-    receiver: async_channel::Receiver<Result<Message, WSError>>,
+    receiver: async_channel::Receiver<Result<RawMessage, WSError>>,
 }
 
 impl Stream {
@@ -524,7 +526,7 @@ impl Stream {
         (future, Self { receiver })
     }
 
-    pub async fn recv(&mut self) -> Option<Result<Message, WSError>> {
+    pub async fn recv(&mut self) -> Option<Result<RawMessage, WSError>> {
         self.receiver.recv().await.ok()
     }
 }
@@ -591,8 +593,26 @@ impl Socket {
         self.sink.send_raw(message).await
     }
 
-    pub async fn recv(&mut self) -> Option<Result<Message, WSError>> {
-        self.stream.recv().await
+    pub async fn recv_with_handle_ping(&mut self) -> Option<Result<Message, WSError>> {
+        let value = self.stream.recv().await;
+        if let Some(Ok(RawMessage::Pong(bytes))) = value {
+            self.send_raw(InRawMessage::new(RawMessage::Pong(bytes))).await.ok();
+            None
+        } else {
+            match value {
+                Some(Ok(v)) => {
+                    match v {
+                        RawMessage::Text(text) => { Some(Ok(Message::Text(text))) }
+                        RawMessage::Binary(bytes) => { Some(Ok(Message::Binary(bytes))) }
+                        RawMessage::Ping(_) => { None }
+                        RawMessage::Pong(_) => { None }
+                        RawMessage::Close(close) => { Some(Ok(Message::Close(close)) )}
+                    }
+                }
+                Some(Err(e)) => {Some(Err(e))},
+                None => {None}
+            }
+        }
     }
 
     pub(crate) async fn await_sink_close(&mut self) -> Result<(), WSError> {

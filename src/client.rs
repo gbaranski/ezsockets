@@ -503,7 +503,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                     self.client.on_call(call).await?;
                     socket_shuttle = Some(socket);
                 }
-                result = socket.stream.recv().fuse() => {
+                result = socket.recv_with_handle_ping().fuse() => {
                     socket_shuttle = self.handle_incoming_msg(socket, result).await?;
                 }
             }
