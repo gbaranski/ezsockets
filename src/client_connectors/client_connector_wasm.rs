@@ -5,20 +5,32 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
 
-impl<'t> From<tokio_tungstenite_wasm::CloseFrame<'t>> for CloseFrame {
+fn utf8bytes_to_tungstenite(bytes: tokio_tungstenite_wasm::Utf8Bytes) -> tungstenite::Utf8Bytes {
+    bytes::Bytes::from(bytes)
+        .try_into()
+        .expect("bytes are already validated as utf8")
+}
+
+fn utf8bytes_to_ttw(bytes: tungstenite::Utf8Bytes) -> tokio_tungstenite_wasm::Utf8Bytes {
+    bytes::Bytes::from(bytes)
+        .try_into()
+        .expect("bytes are already validated as utf8")
+}
+
+impl From<tokio_tungstenite_wasm::CloseFrame> for CloseFrame {
     fn from(frame: tokio_tungstenite_wasm::CloseFrame) -> Self {
         Self {
             code: Into::<TungsteniteCloseCode>::into(Into::<u16>::into(frame.code)).into(),
-            reason: frame.reason.into(),
+            reason: utf8bytes_to_tungstenite(frame.reason),
         }
     }
 }
 
-impl<'t> From<CloseFrame> for tokio_tungstenite_wasm::CloseFrame<'t> {
+impl From<CloseFrame> for tokio_tungstenite_wasm::CloseFrame {
     fn from(frame: CloseFrame) -> Self {
         Self {
             code: Into::<u16>::into(Into::<TungsteniteCloseCode>::into(frame.code)).into(),
-            reason: frame.reason.into(),
+            reason: utf8bytes_to_ttw(frame.reason),
         }
     }
 }
@@ -26,7 +38,7 @@ impl<'t> From<CloseFrame> for tokio_tungstenite_wasm::CloseFrame<'t> {
 impl From<RawMessage> for tokio_tungstenite_wasm::Message {
     fn from(message: RawMessage) -> Self {
         match message {
-            RawMessage::Text(text) => Self::Text(text),
+            RawMessage::Text(text) => Self::Text(utf8bytes_to_ttw(text)),
             RawMessage::Binary(bytes) => Self::Binary(bytes),
             RawMessage::Ping(_) => Self::Close(Some(tokio_tungstenite_wasm::CloseFrame {
                 code: tokio_tungstenite_wasm::CloseCode::Abnormal,
@@ -44,7 +56,9 @@ impl From<RawMessage> for tokio_tungstenite_wasm::Message {
 impl From<tokio_tungstenite_wasm::Message> for RawMessage {
     fn from(message: tokio_tungstenite_wasm::Message) -> Self {
         match message {
-            tokio_tungstenite_wasm::Message::Text(text) => Self::Text(text),
+            tokio_tungstenite_wasm::Message::Text(text) => {
+                Self::Text(utf8bytes_to_tungstenite(text))
+            }
             tokio_tungstenite_wasm::Message::Binary(bytes) => Self::Binary(bytes),
             tokio_tungstenite_wasm::Message::Close(frame) => {
                 Self::Close(frame.map(CloseFrame::from))
@@ -56,7 +70,7 @@ impl From<tokio_tungstenite_wasm::Message> for RawMessage {
 impl From<Message> for tokio_tungstenite_wasm::Message {
     fn from(message: Message) -> Self {
         match message {
-            Message::Text(text) => tokio_tungstenite_wasm::Message::Text(text),
+            Message::Text(text) => tokio_tungstenite_wasm::Message::Text(utf8bytes_to_ttw(text)),
             Message::Binary(bytes) => tokio_tungstenite_wasm::Message::Binary(bytes),
             Message::Close(frame) => {
                 tokio_tungstenite_wasm::Message::Close(frame.map(CloseFrame::into))

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## WIP
 
 - Update to `axum` v0.8.
+    - Now must use `axum::serve` instead of `axum::Server`. Check the crate docs/examples.
+    - `ClientExt::on_text` now takes a `Utf8Bytes` instead of `String`. It is re-exported by ezsockets, so you can do `ezsockets::Utf8Bytes`.
+    - `ClientExt::on_binary` now takes a `Bytes` instead of `Vec<u8>`. It is re-exported by ezsockets, so you can do `ezsockets::Bytes`.
 
 
 ## v0.6.4

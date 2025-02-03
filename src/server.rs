@@ -28,12 +28,12 @@
 //!
 //!     // Define handlers for incoming messages
 //!
-//!     async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> {
+//!     async fn on_text(&mut self, text: ezsockets::Utf8Bytes) -> Result<(), ezsockets::Error> {
 //!         self.handle.text(text); // Send response to the client
 //!         Ok(())
 //!     }
 //!
-//!     async fn on_binary(&mut self, _bytes: Vec<u8>) -> Result<(), ezsockets::Error> {
+//!     async fn on_binary(&mut self, _bytes: ezsockets::Bytes) -> Result<(), ezsockets::Error> {
 //!         unimplemented!()
 //!     }
 //!

@@ -36,7 +36,7 @@ where
     let address = SocketAddr::from(([127, 0, 0, 1], 0));
 
     tracing::debug!("listening on {}", address);
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = TcpListener::bind(address).await.unwrap();
     let future = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),

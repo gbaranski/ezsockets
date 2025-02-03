@@ -4,20 +4,20 @@ use crate::CloseFrame;
 use crate::Message;
 use tungstenite::protocol::frame::coding::CloseCode as TungsteniteCloseCode;
 
-impl<'t> From<tungstenite::protocol::CloseFrame<'t>> for CloseFrame {
+impl From<tungstenite::protocol::CloseFrame> for CloseFrame {
     fn from(frame: tungstenite::protocol::CloseFrame) -> Self {
         Self {
             code: frame.code.into(),
-            reason: frame.reason.into(),
+            reason: frame.reason,
         }
     }
 }
 
-impl<'t> From<CloseFrame> for tungstenite::protocol::CloseFrame<'t> {
+impl From<CloseFrame> for tungstenite::protocol::CloseFrame {
     fn from(frame: CloseFrame) -> Self {
         Self {
             code: frame.code.into(),
-            reason: frame.reason.into(),
+            reason: frame.reason,
         }
     }
 }

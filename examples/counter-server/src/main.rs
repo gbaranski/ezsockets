@@ -92,12 +92,12 @@ impl ezsockets::SessionExt for CounterSession {
         &self.id
     }
 
-    async fn on_text(&mut self, text: String) -> Result<(), Error> {
+    async fn on_text(&mut self, text: ezsockets::Utf8Bytes) -> Result<(), Error> {
         self.handle.text(text).unwrap();
         Ok(())
     }
 
-    async fn on_binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
+    async fn on_binary(&mut self, _bytes: ezsockets::Bytes) -> Result<(), Error> {
         unimplemented!()
     }
 

@@ -14,8 +14,8 @@
 //! #   type ID = u16;
 //! #   type Call = ();
 //! #   fn id(&self) -> &Self::ID { unimplemented!() }
-//! #   async fn on_text(&mut self, text: String) -> Result<(), ezsockets::Error> { unimplemented!() }
-//! #   async fn on_binary(&mut self, bytes: Vec<u8>) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! #   async fn on_text(&mut self, text: ezsockets::Utf8Bytes) -> Result<(), ezsockets::Error> { unimplemented!() }
+//! #   async fn on_binary(&mut self, bytes: ezsockets::Bytes) -> Result<(), ezsockets::Error> { unimplemented!() }
 //! #   async fn on_call(&mut self, call: Self::Call) -> Result<(), ezsockets::Error> { unimplemented!() }
 //! # }
 //! #
@@ -42,8 +42,11 @@
 //!
 //!     tokio::spawn(async move {
 //!         tracing::debug!("listening on {}", address);
-//!         axum::Server::bind(&address)
-//!             .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+//!         let listener = tokio::net::TcpListener::bind(address).await.unwrap();
+//!          axum::serve(
+//!                 listener,
+//!                 app.into_make_service_with_connect_info::<SocketAddr>(),
+//!             )
 //!             .await
 //!             .unwrap();
 //!     });
@@ -138,8 +141,7 @@ impl Upgrade {
         self.on_upgrade_with_config(server, SocketConfig::default())
     }
 
-    /// Finalize upgrading the connection and call the provided callback with
-    /// the stream.
+    /// Finalize upgrading the connection.
     ///
     /// When using `WebSocketUpgrade`, the response produced by this method
     /// should be returned from the handler. See the [module docs](self) for an

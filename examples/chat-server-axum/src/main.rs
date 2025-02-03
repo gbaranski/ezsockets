@@ -5,6 +5,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 use ezsockets::axum::Upgrade;
+use ezsockets::axum_tungstenite::rejection::WebSocketUpgradeRejection;
 use ezsockets::CloseFrame;
 use ezsockets::Error;
 use ezsockets::Server;
@@ -87,18 +88,18 @@ impl ezsockets::SessionExt for ChatSession {
     fn id(&self) -> &Self::ID {
         &self.id
     }
-    async fn on_text(&mut self, text: String) -> Result<(), Error> {
+    async fn on_text(&mut self, text: ezsockets::Utf8Bytes) -> Result<(), Error> {
         tracing::info!("received: {text}");
         self.server
             .call(ChatMessage::Send {
                 from: self.id,
-                text,
+                text: text.to_string(),
             })
             .unwrap();
         Ok(())
     }
 
-    async fn on_binary(&mut self, _bytes: Vec<u8>) -> Result<(), Error> {
+    async fn on_binary(&mut self, _bytes: ezsockets::Bytes) -> Result<(), Error> {
         unimplemented!()
     }
 
@@ -123,8 +124,8 @@ async fn main() {
     let address = SocketAddr::from(([127, 0, 0, 1], 8080));
 
     tokio::spawn(async move {
-        tracing::debug!("listening on {}", address);
-        let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
+        tracing::info!("listening on {}", address);
+        let listener = TcpListener::bind(address).await.unwrap();
         axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -149,8 +150,10 @@ async fn main() {
 async fn websocket_handler(
     Extension(server): Extension<Server<ChatServer>>,
     Query(query): Query<HashMap<String, String>>,
-    ezsocket: Upgrade,
+    ezsocket: Result<Upgrade, WebSocketUpgradeRejection>,
 ) -> impl IntoResponse {
+    let ezsocket = ezsocket.expect("Upgrade should not fail");
+    tracing::info!("received upgrade request for {:?}", ezsocket.address());
     let kick_me = query.get("kick_me");
     let kick_me = kick_me.map(|s| s.as_str());
     if matches!(kick_me, Some("Yes")) {

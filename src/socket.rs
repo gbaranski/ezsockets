@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use futures::lock::Mutex;
 use futures::{FutureExt, SinkExt, StreamExt, TryStreamExt};
 use std::marker::PhantomData;
@@ -5,6 +6,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_tungstenite_wasm::Error as WSError;
+use tungstenite::Utf8Bytes;
 
 #[cfg(not(target_family = "wasm"))]
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -46,7 +48,7 @@ impl Default for SocketConfig {
             heartbeat_ping_msg_fn: Arc::new(|timestamp: Duration| {
                 let timestamp = timestamp.as_millis();
                 let bytes = timestamp.to_be_bytes();
-                RawMessage::Ping(bytes.to_vec())
+                RawMessage::Ping(bytes.to_vec().into())
             }),
         }
     }
@@ -181,22 +183,22 @@ impl From<u16> for CloseCode {
 #[derive(Debug, Clone)]
 pub struct CloseFrame {
     pub code: CloseCode,
-    pub reason: String,
+    pub reason: Utf8Bytes,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Text(String),
-    Binary(Vec<u8>),
+    Text(Utf8Bytes),
+    Binary(Bytes),
     Close(Option<CloseFrame>),
 }
 
 #[derive(Debug, Clone)]
 pub enum RawMessage {
-    Text(String),
-    Binary(Vec<u8>),
-    Ping(Vec<u8>),
-    Pong(Vec<u8>),
+    Text(Utf8Bytes),
+    Binary(Bytes),
+    Ping(Bytes),
+    Pong(Bytes),
     Close(Option<CloseFrame>),
 }
 
@@ -462,7 +464,7 @@ where
                     RawMessage::Binary(bytes) => Message::Binary(bytes),
                     RawMessage::Ping(_bytes) => continue,
                     RawMessage::Pong(bytes) => {
-                        if let Ok(bytes) = bytes.try_into() {
+                        if let Ok(bytes) = (*bytes).try_into() {
                             let bytes: [u8; 16] = bytes;
                             let timestamp = u128::from_be_bytes(bytes);
                             let timestamp = Duration::from_millis(timestamp as u64); // TODO: handle overflow
@@ -667,7 +669,7 @@ async fn handle_heartbeat_sleep_elapsed(
         let _ = sink
             .send_raw(InRawMessage::new(RawMessage::Close(Some(CloseFrame {
                 code: CloseCode::Abnormal,
-                reason: String::from("remote partner is inactive"),
+                reason: "remote partner is inactive".into(),
             }))))
             .await;
         return None;
