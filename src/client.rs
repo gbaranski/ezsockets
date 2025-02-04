@@ -480,6 +480,7 @@ pub async fn connect<E: ClientExt + 'static>(
 }
 
 /// Connect to a websocket server with the provided client connector.
+#[tracing::instrument(skip_all)]
 pub fn connect_with<E: ClientExt + 'static>(
     client_fn: impl FnOnce(Client<E>) -> E,
     config: ClientConfig,
@@ -558,6 +559,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
         Ok(())
     }
 
+    #[tracing::instrument(skip_all)]
     async fn handle_outgoing_msg(
         &mut self,
         mut socket: Socket,
@@ -596,6 +598,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
         Ok(Some(socket))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn handle_incoming_msg(
         &mut self,
         socket: Socket,
