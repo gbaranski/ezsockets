@@ -498,8 +498,7 @@ pub fn connect_with<E: ClientExt + 'static>(
 
     let span = tracing::Span::current();
     let future = runtime_handle.spawn(async move {
-
-        tracing::info!("connecting to {}...", config.url);
+        tracing::info!(url=config.url.to_string(), "connecting...");
         let Some(socket) = client_connect(
             config.max_initial_connect_attempts,
             &config,
@@ -511,7 +510,7 @@ pub fn connect_with<E: ClientExt + 'static>(
         else {
             return Ok(());
         };
-        tracing::info!("connected to {}", config.url);
+        tracing::info!(url=config.url.to_string(), "connected");
 
         let mut actor = ClientActor {
             client,
@@ -522,7 +521,7 @@ pub fn connect_with<E: ClientExt + 'static>(
         };
         actor.run(Some(socket)).instrument(span.clone()).await?;
         Ok(())
-    });
+    }.instrument(span.clone()));
     (handle, future)
 }
 
