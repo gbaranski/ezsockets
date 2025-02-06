@@ -562,7 +562,6 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
         Ok(())
     }
 
-    #[tracing::instrument(skip_all)]
     async fn handle_outgoing_msg(
         &mut self,
         mut socket: Socket,
@@ -601,7 +600,6 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
         Ok(Some(socket))
     }
 
-    #[tracing::instrument(skip_all)]
     async fn handle_incoming_msg(
         &mut self,
         socket: Socket,
@@ -634,7 +632,6 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
         Ok(Some(socket))
     }
 
-    #[tracing::instrument(skip_all)]
     async fn handle_close(
         &mut self,
         frame: Option<CloseFrame>,
@@ -659,7 +656,6 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
         }
     }
 
-    #[tracing::instrument(skip_all)]
     async fn handle_disconnect(&mut self, socket: Socket) -> Result<Option<Socket>, Error> {
         match self.client.on_disconnect().await? {
             ClientCloseMode::Reconnect => {
@@ -715,7 +711,7 @@ async fn client_connect<E: ClientExt, Connector: ClientConnector>(
         }
 
         // connection attempt
-        tracing::info!("connecting attempt no: {}...", i);
+        tracing::info!(attempt=i, "connecting...");
         let result = client_connector.connect(config).await;
         match result {
             Ok(socket_impl) => {
