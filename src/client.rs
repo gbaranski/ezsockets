@@ -78,7 +78,7 @@ use url::Url;
 
 #[cfg(not(target_family = "wasm"))]
 use tokio::time::sleep;
-
+use tracing::Instrument;
 #[cfg(target_family = "wasm")]
 use wasmtimer::tokio::sleep;
 
@@ -461,6 +461,7 @@ impl<E: ClientExt> Client<E> {
 /// - May only be invoked from within a tokio runtime.
 #[cfg(feature = "native_client")]
 #[cfg_attr(docsrs, doc(cfg(feature = "native_client")))]
+#[tracing::instrument(skip_all, fields(url=config.url.to_string()))]
 pub async fn connect<E: ClientExt + 'static>(
     client_fn: impl FnOnce(Client<E>) -> E,
     config: ClientConfig,
@@ -480,7 +481,7 @@ pub async fn connect<E: ClientExt + 'static>(
 }
 
 /// Connect to a websocket server with the provided client connector.
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(skip_all, fields(url=config.url.to_string()))]
 pub fn connect_with<E: ClientExt + 'static>(
     client_fn: impl FnOnce(Client<E>) -> E,
     config: ClientConfig,
@@ -494,7 +495,10 @@ pub fn connect_with<E: ClientExt + 'static>(
     };
     let mut client = client_fn(handle.clone());
     let runtime_handle = client_connector.handle();
+
+    let span = tracing::Span::current();
     let future = runtime_handle.spawn(async move {
+
         tracing::info!("connecting to {}...", config.url);
         let Some(socket) = client_connect(
             config.max_initial_connect_attempts,
@@ -516,7 +520,7 @@ pub fn connect_with<E: ClientExt + 'static>(
             config,
             client_connector,
         };
-        actor.run(Some(socket)).await?;
+        actor.run(Some(socket)).instrument(span.clone()).await?;
         Ok(())
     });
     (handle, future)
@@ -631,6 +635,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
         Ok(Some(socket))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn handle_close(
         &mut self,
         frame: Option<CloseFrame>,
@@ -655,6 +660,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     async fn handle_disconnect(&mut self, socket: Socket) -> Result<Option<Socket>, Error> {
         match self.client.on_disconnect().await? {
             ClientCloseMode::Reconnect => {
@@ -675,6 +681,7 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
 }
 
 /// Returns Ok(Some(socket)) if connecting succeeded, Ok(None) if the client closed itself, and `Err` if an error occurred.
+#[tracing::instrument(skip_all, fields(url=config.url.to_string(), max_attempts))]
 async fn client_connect<E: ClientExt, Connector: ClientConnector>(
     max_attempts: usize,
     config: &ClientConfig,
