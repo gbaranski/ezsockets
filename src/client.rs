@@ -519,7 +519,7 @@ pub fn connect_with<E: ClientExt + 'static>(
             config,
             client_connector,
         };
-        actor.run(Some(socket)).instrument(span.clone()).await?;
+        actor.run(Some(socket)).await?;
         Ok(())
     }.instrument(span.clone()));
     (handle, future)
