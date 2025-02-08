@@ -464,9 +464,9 @@ where
                 Ok(message) => Ok(match message {
                     RawMessage::Text(text) => Message::Text(text),
                     RawMessage::Binary(bytes) => Message::Binary(bytes),
-                    RawMessage::Ping(_bytes) => continue,
+                    RawMessage::Ping(bytes) => Message::Ping(bytes),
                     RawMessage::Pong(bytes) => {
-                        if let Ok(bytes) = bytes.try_into() {
+                        if let Ok(bytes) = bytes.clone().try_into() {
                             let bytes: [u8; 16] = bytes;
                             let timestamp = u128::from_be_bytes(bytes);
                             let timestamp = Duration::from_millis(timestamp as u64); // TODO: handle overflow
@@ -477,7 +477,7 @@ where
                             tracing::trace!("latency: {}ms", latency.as_millis());
                         }
 
-                        continue;
+                        Message::Pong(bytes)
                     }
                     RawMessage::Close(frame) => {
                         closing = true;
