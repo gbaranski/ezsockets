@@ -671,7 +671,7 @@ async fn handle_heartbeat_sleep_elapsed(
     // check last alive
     let elapsed_since_last_alive = last_alive.lock().await.elapsed();
     if elapsed_since_last_alive > config.timeout {
-        tracing::info!("closing connection due to timeout");
+        tracing::warn!("closing connection due to timeout");
         let _ = sink
             .send_raw(InRawMessage::new(RawMessage::Close(Some(CloseFrame {
                 code: CloseCode::Abnormal,
