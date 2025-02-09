@@ -8,7 +8,7 @@ use tokio_tungstenite_wasm::Error as WSError;
 
 #[cfg(not(target_family = "wasm"))]
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-
+use tracing::Instrument;
 #[cfg(target_family = "wasm")]
 use wasmtimer::std::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -547,6 +547,8 @@ impl Socket {
         E: Into<WSError> + std::error::Error,
         S: SinkExt<M, Error = E> + Unpin + StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
     {
+        let span = tracing::Span::current();
+
         let last_alive = Instant::now();
         let last_alive = Arc::new(Mutex::new(last_alive));
         let (sink, stream) = socket.sink_err_into().err_into().split();
@@ -559,7 +561,7 @@ impl Socket {
         let sink_clone = sink.clone();
         handle.spawn(async move {
             socket_heartbeat(sink_clone, config, hearbeat_abort_receiver, last_alive).await
-        });
+        }.instrument(span.clone()));
 
         let (sink_result_sender, sink_result_receiver) = async_channel::bounded(1usize);
         handle.spawn(async move {
@@ -617,13 +619,15 @@ async fn socket_heartbeat(
     abort_receiver: async_channel::Receiver<()>,
     last_alive: Arc<Mutex<Instant>>,
 ) {
+    let span = tracing::Span::current();
+
     let sleep = tokio::time::sleep(config.heartbeat);
     tokio::pin!(sleep);
 
     loop {
         tokio::select! {
             _ = &mut sleep => {
-                let Some(next_sleep_duration) = handle_heartbeat_sleep_elapsed(&sink, &config, &last_alive).await else {
+                let Some(next_sleep_duration) = handle_heartbeat_sleep_elapsed(&sink, &config, &last_alive).instrument(span.clone()).await else {
                     break;
                 };
                 sleep.as_mut().reset(tokio::time::Instant::now() + next_sleep_duration);
