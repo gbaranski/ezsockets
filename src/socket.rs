@@ -679,10 +679,6 @@ async fn handle_heartbeat_sleep_elapsed(
             }))))
             .await;
         return None;
-    } else if elapsed_since_last_alive < config.heartbeat {
-        // todo: this branch will needlessly fire at least once per heartbeat for idle connections since
-        //       Pongs arrive after some delay
-        return Some(config.heartbeat.saturating_sub(elapsed_since_last_alive));
     }
 
     // send ping
