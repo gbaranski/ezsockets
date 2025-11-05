@@ -207,7 +207,7 @@ impl From<Message> for RawMessage {
         match message {
             Message::Text(text) => Self::Text(text),
             Message::Binary(bytes) => Self::Binary(bytes),
-            Message::Close(frame) => Self::Close(frame.map(CloseFrame::from)),
+            Message::Close(frame) => Self::Close(frame),
         }
     }
 }

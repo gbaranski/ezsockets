@@ -226,7 +226,7 @@ impl<E: SessionExt> SessionActor<E> {
                             Message::Binary(bytes) => self.extension.on_binary(bytes).await?,
                             Message::Close(frame) => {
                                 // closed by client
-                                return Ok(frame.map(CloseFrame::from))
+                                return Ok(frame)
                             },
                         }
                         Some(Err(error)) => {
