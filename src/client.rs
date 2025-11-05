@@ -62,6 +62,7 @@ use enfync::Handle;
 use futures::{FutureExt, SinkExt, StreamExt};
 use http::header::HeaderName;
 use http::HeaderValue;
+use tracing::Instrument;
 use std::fmt;
 use std::time::Duration;
 use tokio_tungstenite_wasm::Error as WSError;
@@ -473,7 +474,7 @@ pub fn connect_with<E: ClientExt + 'static>(
         };
         actor.run(Some(socket)).await?;
         Ok(())
-    });
+    }.instrument(tracing::Span::current()));
     (handle, future)
 }
 
