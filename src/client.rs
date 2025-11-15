@@ -62,10 +62,10 @@ use enfync::Handle;
 use futures::{FutureExt, SinkExt, StreamExt};
 use http::header::HeaderName;
 use http::HeaderValue;
-use tracing::Instrument;
 use std::fmt;
 use std::time::Duration;
 use tokio_tungstenite_wasm::Error as WSError;
+use tracing::Instrument;
 use tungstenite::Utf8Bytes;
 use url::Url;
 
@@ -450,31 +450,34 @@ pub fn connect_with<E: ClientExt + 'static>(
     };
     let mut client = client_fn(handle.clone());
     let runtime_handle = client_connector.handle();
-    let future = runtime_handle.spawn(async move {
-        tracing::info!("connecting to {}...", config.url);
-        let Some(socket) = client_connect(
-            config.max_initial_connect_attempts,
-            &config,
-            &client_connector,
-            &mut to_socket_receiver,
-            &mut client,
-        )
-        .await?
-        else {
-            return Ok(());
-        };
-        tracing::info!("connected to {}", config.url);
+    let future = runtime_handle.spawn(
+        async move {
+            tracing::info!("connecting to {}...", config.url);
+            let Some(socket) = client_connect(
+                config.max_initial_connect_attempts,
+                &config,
+                &client_connector,
+                &mut to_socket_receiver,
+                &mut client,
+            )
+            .await?
+            else {
+                return Ok(());
+            };
+            tracing::info!("connected to {}", config.url);
 
-        let mut actor = ClientActor {
-            client,
-            to_socket_receiver,
-            client_call_receiver,
-            config,
-            client_connector,
-        };
-        actor.run(Some(socket)).await?;
-        Ok(())
-    }.instrument(tracing::Span::current()));
+            let mut actor = ClientActor {
+                client,
+                to_socket_receiver,
+                client_call_receiver,
+                config,
+                client_connector,
+            };
+            actor.run(Some(socket)).await?;
+            Ok(())
+        }
+        .instrument(tracing::Span::current()),
+    );
     (handle, future)
 }
 
