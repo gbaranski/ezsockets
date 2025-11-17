@@ -64,6 +64,7 @@ use http::header::HeaderName;
 use http::HeaderValue;
 use std::fmt;
 use std::time::Duration;
+use tokio_tungstenite_wasm::error::ProtocolError;
 use tokio_tungstenite_wasm::Error as WSError;
 use tracing::Instrument;
 use tungstenite::Utf8Bytes;
@@ -533,7 +534,11 @@ impl<E: ClientExt, C: ClientConnector> ClientActor<E, C> {
                 );
             }
             match result {
-                Err(WSError::ConnectionClosed) | Err(WSError::AlreadyClosed) if !closed_self => {
+                Err(WSError::Protocol(ProtocolError::SendAfterClosing))
+                | Err(WSError::ConnectionClosed)
+                | Err(WSError::AlreadyClosed)
+                    if !closed_self =>
+                {
                     tracing::debug!("client socket closed");
                     return self.handle_disconnect(socket).await;
                 }
