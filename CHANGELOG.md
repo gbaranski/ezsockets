@@ -4,13 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## WIP
+## v0.7.1
+- fix: retry on SendAfterClosing by @alpinevm
+- bump `tokio-tungstenite-wasm` to `0.6.1` by @alpinevm
 
-- Update to `axum` v0.8.
-    - Now must use `axum::serve` instead of `axum::Server`. Check the crate docs/examples.
-    - `ClientExt::on_text` now takes a `Utf8Bytes` instead of `String`. It is re-exported by ezsockets, so you can do `ezsockets::Utf8Bytes`.
-    - `ClientExt::on_binary` now takes a `Bytes` instead of `Vec<u8>`. It is re-exported by ezsockets, so you can do `ezsockets::Bytes`.
-
+## v0.7.0
+- Update `axum` to v0.8 by @UkoeHB.
+  - Now must use `axum::serve` instead of `axum::Server`. Check the crate docs/examples.
+  - `ClientExt::on_text` now takes a `Utf8Bytes` instead of `String`. It is re-exported by ezsockets, so you can do `ezsockets::Utf8Bytes`.
+  - `ClientExt::on_binary` now takes a `Bytes` instead of `Vec<u8>`. It is re-exported by ezsockets, so you can do `ezsockets::Bytes`.
+- Updated other dependencies by @UkoeHB.
 
 ## v0.6.4
 
