@@ -82,6 +82,7 @@ members = [
     "examples/chat-client-wasm",
     "examples/chat-server",
     "examples/chat-server-axum",
+    "examples/chat-server-graceful-shutdown",
     "examples/echo-server",
     "examples/echo-server-native-tls",
     "examples/simple-client",

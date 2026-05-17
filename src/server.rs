@@ -115,6 +115,7 @@ struct ServerActor<E: ServerExt> {
     connection_receiver: mpsc::UnboundedReceiver<NewConnection>,
     disconnection_receiver: mpsc::UnboundedReceiver<Disconnected<E>>,
     server_call_receiver: mpsc::UnboundedReceiver<E::Call>,
+    shutdown_receiver: mpsc::Receiver<()>,
     server: Server<E>,
     extension: E,
 }
@@ -127,8 +128,12 @@ where
     async fn run(mut self) {
         tracing::info!("starting websocket server");
         loop {
-            if let Err(err) = async {
+            let one_event = async {
                 tokio::select! {
+                    _ = self.shutdown_receiver.recv() => {
+                        tracing::info!("The websocket server is going to shutdown.");
+                        return Ok(None);
+                    }
                     Some(NewConnection{socket, address, request}) = self.connection_receiver.recv() => {
                         let socket_sink = socket.sink.clone();
                         match self.extension.on_connect(socket, request, address).await {
@@ -168,10 +173,17 @@ where
                     }
                     else => return Err("server actor branches broken".into()),
                 }
-                Ok::<_, Error>(())
+                Ok::<_, Error>(Some(()))
             }
-                .await {
-                tracing::warn!("error when processing: {err:?}");
+                .await;
+            match one_event {
+                Err(err) => {
+                    tracing::warn!("error when processing: {err:?}");
+                }
+                Ok(None) => {
+                    break;
+                }
+                _ => {}
             }
         }
     }
@@ -214,6 +226,7 @@ pub struct Server<E: ServerExt> {
     connection_sender: mpsc::UnboundedSender<NewConnection>,
     disconnection_sender: mpsc::UnboundedSender<Disconnected<E>>,
     server_call_sender: mpsc::UnboundedSender<E::Call>,
+    shutdown_sender: mpsc::Sender<()>,
 }
 
 impl<E: ServerExt> From<Server<E>> for mpsc::UnboundedSender<E::Call> {
@@ -227,16 +240,19 @@ impl<E: ServerExt + 'static> Server<E> {
         let (connection_sender, connection_receiver) = mpsc::unbounded_channel();
         let (disconnection_sender, disconnection_receiver) = mpsc::unbounded_channel();
         let (server_call_sender, server_call_receiver) = mpsc::unbounded_channel();
+        let (shutdown_sender, shutdown_receiver) = mpsc::channel(1);
         let handle = Self {
             connection_sender,
             server_call_sender,
             disconnection_sender,
+            shutdown_sender,
         };
         let extension = create(handle.clone());
         let actor = ServerActor {
             connection_receiver,
             disconnection_receiver,
             server_call_receiver,
+            shutdown_receiver,
             extension,
             server: handle.clone(),
         };
@@ -295,6 +311,10 @@ impl<E: ServerExt> Server<E> {
         };
         Some(result)
     }
+
+    pub async fn graceful_shutdown(&self) -> Result<(), mpsc::error::SendError<()>> {
+        self.shutdown_sender.send(()).await
+    }
 }
 
 impl<E: ServerExt> std::clone::Clone for Server<E> {
@@ -303,6 +323,7 @@ impl<E: ServerExt> std::clone::Clone for Server<E> {
             connection_sender: self.connection_sender.clone(),
             disconnection_sender: self.disconnection_sender.clone(),
             server_call_sender: self.server_call_sender.clone(),
+            shutdown_sender: self.shutdown_sender.clone(),
         }
     }
 }
