@@ -83,6 +83,7 @@ members = [
     "examples/chat-server",
     "examples/chat-server-axum",
     "examples/echo-server",
+    "examples/echo-server-graceful-shutdown",
     "examples/echo-server-native-tls",
     "examples/simple-client",
     "examples/counter-server"
@@ -95,6 +96,10 @@ required-features = ["axum"]
 [[test]]
 name = "tungstenite"
 required-features = ["tungstenite"]
+
+[[test]]
+name = "graceful_shutdown"
+required-features = ["tungstenite", "native_client"]
 
 
 [[bench]]
