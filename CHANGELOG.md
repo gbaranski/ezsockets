@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## v0.7.2
+- feat(server): proper graceful shutdown via `Server::graceful_shutdown`. Sends `Close(Away)` to every live session, awaits `on_disconnect` for each, rejects connections queued after shutdown begins, halts `on_call` dispatch, and resolves only once the server actor has fully drained. New `GracefulShutdownError` type. See `examples/echo-server-graceful-shutdown`.
+
 ## v0.7.1
 - fix: retry on SendAfterClosing by @alpinevm
 - bump `tokio-tungstenite-wasm` to `0.6.1` by @alpinevm
