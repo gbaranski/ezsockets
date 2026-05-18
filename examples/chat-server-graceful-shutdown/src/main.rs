@@ -11,9 +11,9 @@ use ezsockets::Error;
 use ezsockets::Server;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use tokio::net::TcpListener;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::BufReader;
+use tokio::net::TcpListener;
 
 type SessionID = u16;
 type Session = ezsockets::Session<SessionID, ()>;
