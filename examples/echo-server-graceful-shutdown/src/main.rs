@@ -93,7 +93,9 @@ async fn main() {
         })
     };
 
-    tokio::signal::ctrl_c().await.expect("failed to listen for ctrl-c");
+    tokio::signal::ctrl_c()
+        .await
+        .expect("failed to listen for ctrl-c");
     tracing::info!("ctrl-c received — initiating graceful shutdown");
 
     // Stop taking new TCP connections, then drain live sessions.

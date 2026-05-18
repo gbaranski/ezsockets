@@ -397,7 +397,9 @@ impl<E: ServerExt> Server<E> {
         self.shutdown_sender
             .send(ack_tx)
             .map_err(|_| GracefulShutdownError::ServerStopped)?;
-        ack_rx.await.map_err(|_| GracefulShutdownError::ServerStopped)
+        ack_rx
+            .await
+            .map_err(|_| GracefulShutdownError::ServerStopped)
     }
 }
 
