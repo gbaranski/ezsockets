@@ -57,6 +57,7 @@ cfg_if::cfg_if! {
         #[cfg(any(feature = "axum", feature = "tungstenite"))]
         pub use server_runners::*;
 
+        pub use server::GracefulShutdownError;
         pub use server::Server;
         pub use server::ServerExt;
 
